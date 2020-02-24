@@ -4,6 +4,9 @@ data/
 # output files when exploring data
 output/
 
+# manuscript in preparation
+manuscript/
+
 # History files
 .Rhistory
 .Rapp.history
