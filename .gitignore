@@ -1,6 +1,9 @@
 # project data files
 data/
 
+# output files when exploring data
+output/
+
 # History files
 .Rhistory
 .Rapp.history
