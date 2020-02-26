@@ -1,0 +1,1533 @@
+---
+title: "Communication Coding"
+author: "Matt Blanchard"
+date: "25/09/2019"
+output: html_document
+---
+
+Need to decide whether to keep drivers with issues in the dataset
+
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {r load, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(corrr)
+library(here)
+library(knitr)
+
+vars <- read_csv(here("data/200221_comms_efa_vars.csv")) %>% 
+      filter(!team %in% c("17080712_1", "17080810_1"))  # remove outliers: collisions("17080810_1"), distance("17081510_2")
+# identified a number of outlier teams had major driver-drone networking issues
+  # mutate(issue = ifelse(team %in% c("17031609_1", "17080810_1", "17081512_2"), TRUE, issue),
+  #        issue_note = ifelse(team %in% c("17031609_1"), "major driver-drone networking error - codriver could not read arrows and saw roughly 10% of the driver's traffic", issue_note),
+  #        issue_note = ifelse(team %in% c("17080810_1"), "major driver-drone networking error - codriver saw no-go signs in place of all arrows and saw roughly 40% of the driver's traffic", issue_note),
+  #        issue_note = ifelse(team %in% c("17081512_2"), "major driver-drone networking error - codriver saw no-go signs in place of all arrows and saw roughly 10% of the driver's traffic", issue_note)) %>% 
+
+# check 17081510_2 according to session notes: "Gunner2 and 1 had poor connection. I think Gunner2 skipped all events in lap 1 by going the wrong way."
+
+# # read factor scores for comms vars
+# efa <- read_csv(here("data/200220_comms_efa_spss_n55.csv")) %>% 
+#   select(team, inconsistent_codriver, terrible_codriver, helpful_exchange)
+# 
+# # add comms factors to dataset
+# vars <- vars %>% left_join(efa, by = "team")
+
+raw <- read_csv(here("data/200221_comms_raw.csv")) %>% 
+  filter(team %in% vars$team) # remove outlier teams
+
+# select which communication variables to analyse
+comms_fac <- names(vars %>% select(inconsistent_codriver, terrible_codriver, helpful_exchange))
+```
+
+# Comparison of the mean number of communication events coded by each driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+raw %>% 
+  group_by(team, Coder, event) %>% 
+  summarise(n = n()) %>% 
+  group_by(Coder, event) %>% 
+  summarise(mean = mean(n)) %>% 
+  filter(Coder != "All") %>% 
+  ggplot(aes(x = Coder, y = mean, fill = Coder)) +
+  geom_col() +
+  facet_wrap(~event, scales = "free_y")
+
+```
+
+# Descriptives and distributions for communication variables overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(team:sit.awareness_driver) %>% 
+  select(-contains("ratio")) %>% 
+         # collisions_overall_improve:collisions_max_recovery) %>% 
+  gather(var, val, -team) %>% 
+  group_by(var) %>% 
+  summarise(mean = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T))
+
+kable(x)
+
+vars %>% 
+  select(team:sit.awareness_driver) %>% 
+  select(-contains("ratio")) %>%  
+         # collisions_overall_improve:collisions_max_recovery) %>% 
+  gather(var, val, -team) %>% 
+  ggplot(aes(x = val)) +
+  geom_histogram() +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal()
+```
+
+# Reliability for each communication variable overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# reliability for each comms variable
+name <- names(vars %>% select(co_info_help_overall:co_ratio_overall, -contains("ratio")))
+              
+name <- gsub("_overall", "", name)
+
+lapply(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, co_info_harm_1:drive_total_5) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+```
+
+# Descriptives and distributions for communication variables for fog/no fog
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(team, co_info_harm_fog:drive_total_no_fog) %>% 
+  select(-contains("ratio")) %>% 
+  gather(var, val, -team) %>% 
+  mutate(e = ifelse(str_detect(var, "no_fog"), "no_fog", "fog"),
+         var = str_remove(var, "_no_fog"),
+         var = str_remove(var, "_fog")) %>% 
+  group_by(e, var) %>% 
+  summarise(mean = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T)) %>% 
+  gather(var2, val, mean, sd) %>% 
+  unite(var2, var2, e) %>% 
+  spread(var2, val)
+
+kable(x)
+
+vars %>% 
+  select(team, co_info_harm_fog:drive_total_no_fog) %>% 
+  select(-contains("ratio")) %>%  
+  gather(var, val, -team) %>% 
+  ggplot(aes(x = val)) +
+  geom_histogram() +
+  facet_wrap(~var, scales = "free") +
+  theme_minimal()
+```
+
+# Reliability for each communication variable fog/no fog
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# reliability for each comms variable
+name <- names(vars %>% select(co_info_harm_fog:drive_total_no_fog, -contains("ratio")))
+
+lapply(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, co_info_harm_fog_1:drive_total_no_fog_5) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+```
+
+# Relationships between communication variables and time_talking variables overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>%
+  select(co_total_overall, drive_total_overall, time_talking_overall, time_talking_events_overall, 
+         time_talking_none_overall, time_talking_overall_drone, time_talking_events_overall_drone,
+         time_talking_none_overall_drone) %>% 
+  correlate() %>% focus(drive_total_overall, co_total_overall)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, drive_total_overall, co_total_overall)
+
+x[x < .270] <- "-"
+
+kable(x)
+
+```
+
+# Relationship between communication variables and time_talking variables per lap
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>%
+  select(co_total_1:co_total_5, drive_total_1:drive_total_5, 
+         time_talking_1:time_talking_5, time_talking_events_1:time_talking_events_5, 
+         time_talking_none_1:time_talking_none_5, 
+         time_talking_1_drone:time_talking_5_drone, 
+         time_talking_events_1_drone:time_talking_events_5_drone,
+         time_talking_none_1_drone:time_talking_none_5_drone) %>% 
+  correlate() %>% focus(co_total_1:co_total_5, drive_total_1:drive_total_5)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, co_total_1:drive_total_5)
+
+x[x < .270] <- "-"
+
+kable(x)
+
+```
+
+# Relationships between communication variables
+Is there a multicollinearity issue?
+All correlations below .5 are suppressed
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>%
+  select(co_info_help_overall:sit.awareness_driver, -contains("ratio")) %>% 
+  correlate()
+
+x[x < .5] <- "-"
+
+kable(x)
+
+```
+
+It looks like there is a multicollinearity issue. Need to reduce comms variables to a smaller number using factor analysis.
+
+## Conduct EFA to extract comms factors
+Reduce variables to smaller number of factors and correlte with each other
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# library(psych)
+# 
+# x <- vars %>% 
+#   dplyr::select(co_info_help_overall:drive_frust_overall, 
+#                 -contains("ratio"), -co_total_help_overall, 
+#                 -co_total_harm_overall, -co_total_overall)
+# 
+# x_std <- data.frame(scale(x, center=TRUE, scale=TRUE))
+# 
+# efa_3factor <- fa(r = x_std, nfactors = 3, 
+#                        rotate = "promax", 
+#                        fm = "pc",
+#                        scores="regression")
+# 
+# 
+# vars <- cbind(vars, data.frame(efa_3factor$scores) %>% 
+#   rename(neg_comm = ML2, drive_quest = ML1, co_quest = ML4, co_intruct = ML3))
+
+x <- vars %>%
+  dplyr::select(comms_fac) %>% 
+  correlate()
+
+kable(x)
+
+# detach("package:nFactors", unload=TRUE)
+# detach("package:MASS", unload=TRUE)
+```
+
+## Descriptives statistics
+## Driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(team, driving_years:neuroticism) %>% 
+  gather(var, val, -team) %>% 
+  mutate(var = str_remove(var, "_drone")) %>% 
+  group_by(var) %>% 
+  summarise(mean = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T))
+
+kable(x)
+```
+
+## Drone
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(team, driving_years_drone:neuroticism_drone) %>% 
+  gather(var, val, -team) %>% 
+  mutate(var = str_remove(var, "_drone")) %>% 
+  group_by(var) %>% 
+  summarise(mean = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T))
+
+kable(x)
+```
+
+# Driver: relationship between communication factors and psych variables
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(drive_question_overall:teamwork, leadership_driver, sit.awareness_driver, age_driver, sex_driver, mean_age, prop_female, driving_years:neuroticism) %>% 
+  select(comms_fac, leadership:teamwork, leadership_driver, sit.awareness_driver, age_driver, sex_driver, mean_age, prop_female, driving_years:neuroticism) %>% 
+  select(-contains("ratio")) %>% 
+  correlate() %>% focus(age_driver:neuroticism)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, age_driver:neuroticism)
+
+x[x < .270] <- "-"
+
+kable(x)
+
+```
+
+<!-- # Driver: relationship between fog/no fog communication variables and psych variables -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(drive_frust_fog:drive_total_no_fog, age_driver, sex_driver,  -->
+<!--          mean_age, prop_female, driving_years:neuroticism) %>%  -->
+<!--   select(-contains("ratio")) %>%  -->
+<!--   correlate() %>% focus(age_driver:neuroticism) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, age_driver:neuroticism) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+# Driver: relationship between communication variables and NASA-TLX (self)
+The more the driver and drone operator communicated the more effortful and demanding the driver found the task. Interestingly, for the driver there is no relationship between the quantity or type of communication and their subjective assessment of their own performance.
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(co_info_help_overall:sit.awareness_driver, effort:temporal_demand, -contains("ratio")) %>% 
+  select(comms_fac, leadership:teamwork, leadership_driver, sit.awareness_driver, effort:temporal_demand, -contains("ratio")) %>% 
+  correlate() %>% focus(effort:temporal_demand)
+  
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, effort:temporal_demand)
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+# Driver: relationship between communication variables and NASA-TLX (other)
+The more the driver and drone operator communicated the more effortful and demanding the driver thought the task was for the drone operator. The higher the frequency of helpful communication (info and instruct) and total communication, and the more questions the drone operator asked the higher the driver's subjective assessment of the drone operator's performance.
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(co_info_help_overall:sit.awareness_driver,
+  #        effort_other:temporal_demand_other, -contains("ratio")) %>% 
+  select(comms_fac, leadership:teamwork, leadership_driver, sit.awareness_driver,
+         effort_other:temporal_demand_other, -contains("ratio")) %>% 
+  correlate() %>% focus(effort_other:temporal_demand_other)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, effort_other:temporal_demand_other)
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+# Drone: relationship between overall communication variables and psych variables
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(co_info_help_overall:co_question_ratio_overall, co_ratio_overall:leadership_co_driver, 
+  #        sit.awareness_co_driver, age_co_driver, sex_co_driver, mean_age, prop_female, 
+  #        driving_years_drone:neuroticism_drone) %>% 
+  select(comms_fac, leadership:teamwork, leadership_co_driver, sit.awareness_co_driver, age_co_driver, sex_co_driver, mean_age, prop_female, 
+         driving_years_drone:neuroticism_drone) %>% 
+  select(-contains("ratio")) %>% 
+  correlate() %>% focus(age_co_driver:neuroticism_drone)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, age_co_driver:neuroticism_drone)
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+<!-- # Drone: relationship between fog/no fog communication variables and psych variables -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(co_info_harm_fog:co_total_no_fog, age_co_driver, sex_co_driver, mean_age,  -->
+<!--        prop_female, driving_years_drone:neuroticism_drone) %>%  -->
+<!--   select(-contains("ratio")) %>%  -->
+<!--   correlate() %>% focus(age_co_driver:neuroticism_drone) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, age_co_driver:neuroticism_drone) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+# Drone: relationship between communication variables and NASA-TLX (self)
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(co_info_help_overall:sit.awareness_driver,
+  #        effort_drone:temporal_demand_drone) %>% 
+  select(comms_fac, leadership:sit.awareness_driver,
+         effort_drone:temporal_demand_drone) %>% 
+  select(-contains("ratio")) %>% 
+  correlate() %>% focus(effort_drone:temporal_demand_drone)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, effort_drone:temporal_demand_drone)
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+# Drone: relationship between communication variables and NASA-TLX (other)
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(co_info_help_overall:sit.awareness_driver, effort_other_drone:temporal_demand_other_drone) %>%
+    select(comms_fac, leadership:sit.awareness_driver, effort_other_drone:temporal_demand_other_drone) %>%
+    select(-contains("ratio")) %>% 
+  correlate() %>% focus(effort_other_drone:temporal_demand_other_drone)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, effort_other_drone:temporal_demand_other_drone)
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+# Relationship between communication variables and sim performance
+## Descriptives for sim performance measures
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>%
+  ungroup() %>% 
+  select(team, collisions_1:collisions_5, speed_1:speed_5, 
+         distance_1_deviation:distance_5_deviation) %>% 
+  gather(var, val, -team) %>% 
+  mutate(lap = str_extract(var, "_[1-5]"),
+         lap = as.numeric(str_remove(lap, "_")),
+         var = str_remove(var, "_[1-5]")) %>% 
+  group_by(var, lap) %>% 
+  summarise(mean = mean(val),
+            sd = sd(val))
+
+kable(x)
+
+x <- vars %>%
+  ungroup() %>% 
+  select(team, collisions_1:collisions_5, speed_1:speed_5, 
+         distance_1_deviation:distance_5_deviation) %>% 
+  gather(var, val, -team) %>% 
+  mutate(lap = str_extract(var, "_[1-5]"),
+         lap = as.numeric(str_remove(lap, "_")),
+         var = str_remove(var, "_[1-5]")) %>% 
+  group_by(var) %>% 
+  summarise(mean = mean(val),
+            sd = sd(val))
+
+kable(x)
+```
+
+## Reliability estimates for sim performance measures
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# reliability for each sim performance variable
+name <- c("collisions", "distance_deviation", "speed")
+
+lapply(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, collisions_1:collisions_5, speed_1:speed_5, 
+           distance_1_deviation:distance_5_deviation) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+
+```
+
+## Collisions overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(comms_fac, leadership:sit.awareness_driver,
+    # co_info_help_overall:sit.awareness_driver, 
+         age_co_driver:prop_female, 
+         collisions_overall) %>% 
+        select(-contains("ratio")) %>% 
+  correlate() %>% focus(collisions_overall)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, contains("collisions"), contains("speed"))
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+## Collisions per lap overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(collisions_1:collisions_5,
+         co_info_harm_1:drive_total_5) %>% 
+         select(-contains("ratio")) %>% 
+  correlate() %>% focus(collisions_1:collisions_5)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, contains("collisions"), contains("speed"))
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+<!-- ## Collisions fog/no fog -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(co_info_harm_fog:drive_total_no_fog, age_co_driver:prop_female, collisions_fog_overall, collisions_no_fog_overall) %>%  -->
+<!--   select(-contains("ratio")) %>%  -->
+<!--   correlate() %>% focus(collisions_fog_overall, collisions_no_fog_overall) %>%  -->
+<!--   arrange(str_detect(rowname, "fog"), str_detect(rowname, "no_fog")) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, contains("collisions"), contains("speed")) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+<!-- ## Collisions per lap fog/no fog -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(collisions_fog_1:collisions_fog_5, collisions_no_fog_1:collisions_no_fog_5, -->
+<!--          co_info_harm_fog_1:drive_total_no_fog_5) %>%  -->
+<!--          select(-contains("ratio")) %>%  -->
+<!--   correlate() %>% focus(collisions_fog_1:collisions_fog_5, collisions_no_fog_1:collisions_no_fog_5) %>%  -->
+<!--   arrange(str_detect(rowname, "fog"), str_detect(rowname, "no_fog")) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, contains("collisions"), contains("speed")) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+
+## Speed overall
+There's little happening with speed.
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(co_info_help_overall:sit.awareness_driver, age_co_driver:prop_female,
+  # speed_overall) %>% 
+  select(comms_fac, leadership:sit.awareness_driver, 
+         age_co_driver:prop_female, speed_overall) %>% 
+  select(-contains("ratio")) %>% 
+  correlate() %>% focus(speed_overall)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, contains("collisions"), contains("speed"))
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+## Speed per lap overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(speed_1:speed_5, 
+         co_info_harm_1:drive_total_5) %>% 
+  select(-contains("ratio")) %>% 
+  correlate() %>% focus(speed_1:speed_5)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, contains("collisions"), contains("speed"))
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+
+<!-- ## Speed fog/no fog overall -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(co_info_harm_fog:drive_total_no_fog, age_co_driver:prop_female, speed_fog_overall, speed_no_fog_overall) %>%  -->
+<!--         select(-contains("ratio")) %>%  -->
+<!--   correlate() %>% focus(speed_fog_overall, speed_no_fog_overall) %>%  -->
+<!--   arrange(str_detect(rowname, "fog"), str_detect(rowname, "no_fog")) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, contains("collisions"), contains("speed")) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+## Speed per lap fog/no fog
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(speed_fog_1:speed_fog_5, speed_no_fog_1:speed_no_fog_5,
+         co_info_harm_fog_1:drive_total_no_fog_5) %>% 
+         select(-contains("ratio")) %>% 
+  correlate() %>% focus(speed_fog_1:speed_fog_5, speed_no_fog_1:speed_no_fog_5)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, contains("collisions"), contains("speed"))
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+# Distance deviation
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  # select(co_info_help_overall:sit.awareness_driver, age_co_driver:prop_female, distance_overall_deviation) %>%
+    select(comms_fac, leadership:sit.awareness_driver, age_co_driver:prop_female, distance_overall_deviation) %>%
+  select(-contains("ratio")) %>% 
+  correlate() %>% focus(distance_overall_deviation)
+
+col_names <- x %>% select(rowname)
+
+x <- round(x[,-1],2) %>% 
+  bind_cols(col_names) %>% 
+  select(rowname, contains("deviation"))
+
+x[x < .270] <- "-"
+
+kable(x)
+```
+
+<!-- # Distance deviation absolute value -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(co_info_help_overall:co_question_ratio_overall, co_ratio_overall,  -->
+<!--          drive_question_overall:drive_ratio_overall, leadership, sit.awareness, sit.awareness_driver, overall, distance_overall_deviation_abs) %>%  -->
+<!--   correlate() %>% focus(distance_overall_deviation_abs) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, contains("deviation")) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+# Regression 
+## Sig. correaltions between performance metrics and comms and psych variables overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(comms_fac, leadership:sit.awareness_driver,
+    # co_info_help_overall:sit.awareness_driver, 
+    driving_years:neuroticism, driving_years_drone:neuroticism_drone, age_co_driver:prop_female,
+                # contains("intercept"), contains("poly"), -contains("speed"), 
+                # -contains("collisions"), -contains("p.value"), 
+                -contains("ratio"),
+                collisions_overall, speed_overall, distance_overall_deviation) %>% 
+  correlate() %>% focus(collisions_overall, speed_overall, distance_overall_deviation) %>% 
+  gather(var, val, -rowname) %>% 
+  mutate(val = round(val, 2)) %>% 
+  spread(var, val)
+
+x[x > -.270 & x < .270] <- NA
+
+name <- names(x)[-1]
+
+lapply(name, function(i) {
+  x <- x %>% select(rowname, i) %>% na.omit()
+  kable(x)
+})
+```
+
+## Regression overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# functions to check assumptions and multicollinearity
+library(car) # load package to diagnose multicollinearity
+library(GGally)
+
+# basic check for multicollinearlity. 
+# Threshold VIF >= 5
+mcol_check <- function(fit, threshold) {
+  if (any(vif(fit) >= threshold)) {
+    print(paste0("multicollinearity detected for ", sum(vif(fit) >= threshold), 
+          " variables"))
+    sort(vif(fit), T)[c(1:sum(vif(fit) >= threshold))]
+  } else {
+    "no multicollinearity: all variables appear to be appropriate for inclusion in the model"
+  }
+}
+
+# thorough check for multicollinearity
+mc_check <- function() {
+  library(mctest)
+  mc <- omcdiag(vars %>% select(fit_vars), vars %>% select(dv))
+  print(mc)
+  
+  if (any(mc$odiags[,2] == 1)) {
+    print(imcdiag(vars %>% select(fit_vars), vars %>% select(dv)))
+    "multicollinearity detected"
+  } else {
+    print(imcdiag(vars %>% select(fit_vars), vars %>% select(dv)))
+    "no multicollinearity: all variables appear to be appropriate for inclusion in the model"
+    
+  }
+}
+
+cor_plot <- function() {
+  # plot correlations between IVs
+  vars %>% select(fit_vars) %>% ggcorr(method = "pairwise.complete.obs", 
+                                label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot
+                                hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels
+  
+  # more detailed plot: distribution, scatterplot, correlations
+  # vars %>% 
+  #   select(x, issue) %>% 
+  #   ggpairs(., lower = list(continuous = wrap("smooth", alpha = 0.3, size=0.1)))
+}
+
+select_vars <- function(dv) {
+  
+  a <- na.omit(x[c(1, dv)]) %>% select(rowname)
+  
+  # if (any(a$rowname %in% c("co_instruct_harm_overall", "co_info_harm_overall"))) {
+  #   a <- a %>% filter(!rowname %in% c("co_total_harm_overall")) 
+  # } else {} 
+  # 
+  # if (any(a$rowname %in% c("co_instruct_help_overall", "co_info_help_overall"))) {
+  #   a <- a %>% filter(!rowname %in% c("co_total_help_overall")) 
+  # } else {} 
+  # 
+  # if (any(a$rowname %in% names(vars %>% select(contains("co"), -contains("collisions")) %>% select(contains("overall"), -contains("ratio"), -co_total_overall)))) {
+  #   a <- a %>% filter(!rowname %in% c("co_total_overall")) 
+  # } else {} 
+  # 
+  # if (any(a$rowname %in% c("drive_question_overall", "drive_informs_overall"))) {
+  #   a <- a %>% filter(!rowname %in% c("drive_total_overall"))
+  # } else {}
+  
+  sex <- a %>% filter(rowname %in% c("prop_female", "sex_driver"))
+  if (all(sex$rowname %in% c("prop_female", "sex_driver"))) {
+    a <- a %>% filter(!rowname %in% c("sex_driver"))
+  } else {}
+  
+  if (any(a$rowname %in% c("sit.awareness_driver", "sit.awareness_co_driver"))) {
+    a <- a %>% filter(!rowname %in% c("sit.awareness"))
+  } else {}
+  
+  if (any(a$rowname %in% c("leadership_driver", "leadership_co_driver"))) {
+    a <- a %>% filter(!rowname %in% c("leadership"))
+  } else {}
+  vars %>% select(a$rowname)
+}
+
+select_vars_sex <- function(dv) {
+  
+  a <- na.omit(x[c(1, dv)]) %>% select(rowname)
+
+  sex <- a %>% filter(rowname %in% c("prop_female", "sex_driver"))
+  if (all(sex$rowname %in% c("prop_female", "sex_driver"))) {
+    a <- a %>% filter(!rowname %in% c("prop_female"))
+  } else {}
+  
+  if (any(a$rowname %in% c("sit.awareness_driver", "sit.awareness_co_driver"))) {
+    a <- a %>% filter(!rowname %in% c("sit.awareness"))
+  } else {}
+  
+  if (any(a$rowname %in% c("leadership_driver", "leadership_co_driver"))) {
+    a <- a %>% filter(!rowname %in% c("leadership"))
+  } else {}
+  vars %>% select(a$rowname)
+}
+
+# function for adding interactions to regression iteratively
+# names of comms factors
+fac_names <- c("helpful_exchange", "inconsistent_codriver", "terrible_codriver")
+
+interact <- function(a) {
+  map(1:3, function(i) {
+    if (all(c(fac_names[i], "prop_female") %in% names(var))) {
+      fm <- as.formula(paste("a", "~", fac_names[i], "*prop_female", " + ", "."))
+
+      f <- lm(fm, data = var_std)
+
+      summary(f)
+    }
+  })
+}
+
+interact_sex <- function(a) {
+  map(1:3, function(i) {
+    if (all(c(fac_names[i], "sex_driver") %in% names(var2))) {
+      fm <- as.formula(paste("a", "~", fac_names[i], "*sex_driver", " + ", "."))
+
+      f <- lm(fm, data = var2_std)
+
+    
+    
+      summary(f)
+    }
+  })
+}
+
+```
+
+## Collisions overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+var <- select_vars(2) %>% select(-sit.awareness_driver) # 19 drivers missing situation awareness data so removed
+
+# mean center IVs
+var_std <- var %>% 
+  # mutate(prop_female = factor(prop_female)) %>% 
+  mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+
+psych::describe(var_std)
+
+# regression without interactions
+fit <- lm(vars$collisions_overall ~ .,
+          data = var_std)
+
+summary(fit)
+
+library("olsrr")
+ols_correlations(fit)
+
+# with sex variable
+var2 <- select_vars_sex(2) %>% select(-sit.awareness_driver) # 19 drivers missing situation awareness data so removed
+
+# mean center IVs
+var2_std <- var2 %>% 
+    mutate(sex_driver = factor(sex_driver)) %>% 
+  mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+
+psych::describe(var2_std)
+
+# regression without interactions
+fit2 <- lm(vars$collisions_overall ~ .,
+           data = var2_std)
+
+summary(fit2)
+ols_correlations(fit2)
+
+# regression with interactions
+interact(vars$collisions_overall)
+
+interact_sex(vars$collisions_overall)
+
+# check assumptions and multicollinearity
+# mcol_check(fit, threshold = 5) # check for multicollinearity
+plot(fit)
+
+# make list of variables in model
+fit_vars <- names(var)
+dv <- "collisions_overall"
+
+# plot correlations between IVs
+cor_plot()
+
+# check for multicollinearity
+mc_check()
+
+# alternative method of checking assumptions and multicollinearity
+# library("olsrr")
+# Vignette: https://cran.r-project.org/web/packages/olsrr/vignettes/regression_diagnostics.html
+# VIFs > 4 require investigation
+# Condition index: Collinearity is spotted by finding 2 or more variables that have large proportions of variance (.50 or more) that correspond to large condition indices. A rule of thumb is to label as large those condition indices in the range of 30 or larger.
+# ols_coll_diag(fit)
+# ols_correlations(fit) # Relative importance of independent variables in determining Y. How much each variable uniquely contributes to R2 over and above that which can be accounted for by the other predictors.
+# ols_plot_diagnostics(fit)
+# ols_plot_resid_regressor(fit)
+```
+
+## Speed overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+var <- select_vars(4) %>% select(-leadership_co_driver, -sit.awareness_driver) # 19 drivers missing situation awareness data so removed
+
+# mean center IVs
+var_std <- var %>% 
+ # mutate(prop_female = factor(prop_female)) %>%
+  mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+
+psych::describe(var_std)
+
+
+# regression without interactions
+fit <- lm(vars$speed_overall ~ .,
+          data = var_std)
+
+summary(fit)
+ols_correlations(fit)
+
+# with sex variable
+var2 <- select_vars_sex(4) %>% select(-leadership_co_driver, -sit.awareness_driver) # 19 drivers missing situation awareness data so removed
+
+# mean center IVs
+var2_std <- var2 %>% 
+  mutate(sex_driver = factor(sex_driver)) %>%
+  mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+
+psych::describe(var2_std)
+
+# regression without interactions
+fit2 <- lm(vars$speed_overall ~ .,
+           data = var2_std)
+
+summary(fit2)
+ols_correlations(fit2)
+
+# regression with interactions
+interact_sex(vars$collisions_overall)
+
+# check assumptions and multicollinearity
+# mcol_check(fit, threshold = 5) # check for multicollinearity
+plot(fit2)
+
+# make list of variables in model
+fit_vars <- names(var)
+dv <- "speed_overall"
+
+# plot correlations between IVs
+cor_plot()
+
+# check for multicollinearity
+mc_check()
+```
+
+## Distance deviation overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+var <- select_vars(3)
+
+# mean center IVs
+var_std <- var %>% 
+  mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+
+psych::describe(var_std)
+
+# regression without interactions
+fit <- lm(vars$distance_overall_deviation ~ .,
+          data = var)
+
+summary(fit)
+ols_correlations(fit)
+
+# regression with interactions
+interact(vars$distance_overall_deviation)
+
+# check assumptions and multicollinearity
+# mcol_check(fit, threshold = 5) # check for multicollinearity
+plot(fit)
+
+# make list of variables in model
+fit_vars <- names(var)
+dv <- "distance_overall_deviation"
+
+# plot correlations between IVs
+cor_plot()
+
+# check for multicollinearity
+mc_check()
+```
+
+<!-- ## Sig. correaltions between performance metrics and comms and psych variables fog/no fog -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # fog event -->
+<!-- x <- vars %>% select(co_info_harm_fog:drive_total_no_fog, leadership:sit.awareness_driver, -->
+<!--                      driving_years:neuroticism, driving_years_drone:neuroticism_drone,  -->
+<!--                      age_co_driver:prop_female, -->
+<!--                      -contains("no_fog"), -->
+<!--                      # contains("intercept"), contains("poly"), -contains("speed"),  -->
+<!--                      # -contains("collisions"), -contains("p.value"),  -->
+<!--                      -contains("ratio"), -->
+<!--                      collisions_fog_overall, speed_fog_overall) %>%  -->
+<!--   correlate() %>% focus(collisions_fog_overall, speed_fog_overall) %>%  -->
+<!--   gather(var, val, -rowname) %>%  -->
+<!--   mutate(val = round(val, 2)) %>%  -->
+<!--   spread(var, val) -->
+
+<!-- x[x > -.270 & x < .270] <- NA -->
+
+<!-- name <- names(x)[-1] -->
+
+<!-- map(name, function(i) { -->
+<!--   x <- x %>% select(rowname, i) %>% na.omit() -->
+<!--   kable(x) -->
+<!-- }) -->
+
+<!-- # no fog -->
+<!-- x <- vars %>% select(co_info_harm_no_fog, co_info_harm_no_fog, co_info_help_no_fog, co_instruct_harm_no_fog, -->
+<!--                      co_instruct_help_no_fog, co_question_no_fog, co_redundant_no_fog, co_total_harm_no_fog, -->
+<!--                      co_total_help_no_fog, co_total_no_fog, drive_frust_no_fog, drive_informs_no_fog,  -->
+<!--                      drive_question_no_fog, drive_total_no_fog, -->
+<!--                      leadership:sit.awareness_driver, -->
+<!--                      driving_years:neuroticism, driving_years_drone:neuroticism_drone,  -->
+<!--                      age_co_driver:prop_female, -->
+<!--                      collisions_no_fog_overall, speed_no_fog_overall) %>%  -->
+<!--   correlate() %>% focus(collisions_no_fog_overall, speed_no_fog_overall) %>%  -->
+<!--   gather(var, val, -rowname) %>%  -->
+<!--   mutate(val = round(val, 2)) %>%  -->
+<!--   spread(var, val) -->
+
+<!-- x[x > -.270 & x < .270] <- NA -->
+
+<!-- name <- names(x)[-1] -->
+
+<!-- map(name, function(i) { -->
+<!--   x <- x %>% select(rowname, i) %>% na.omit() -->
+<!--   kable(x) -->
+<!-- }) -->
+<!-- ``` -->
+
+<!-- # Regression fog/no fog -->
+<!-- ## Collisions fog -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+
+<!-- # check for multicollinearlity.  -->
+<!-- # Threshold VIF >= 5 -->
+<!-- # mcol_check <- function(fit, threshold) { -->
+<!-- #   if (any(vif(fit) >= threshold)) { -->
+<!-- #     print(paste0("multicollinearity detected for ", sum(vif(fit) >= threshold),  -->
+<!-- #           " variables")) -->
+<!-- #     sort(vif(fit), T)[c(1:sum(vif(fit) >= threshold))] -->
+<!-- #   } else { -->
+<!-- #     "no multicollinearity: all variables appear to be appropriate" -->
+<!-- #   } -->
+<!-- # } -->
+
+<!-- # collisions fog -->
+<!-- fit <- lm(collisions_fog_overall ~ scale(co_instruct_harm_fog) + -->
+<!--             scale(co_instruct_help_fog) + scale(co_redundant_fog) + -->
+<!--             scale(incongruent_errors)  + scale(repeat_errors_drone) + -->
+<!--             scale(sit.awareness_driver), data = vars) -->
+<!-- summary(fit) -->
+
+<!-- library("olsrr") -->
+<!-- ols_correlations(fit) -->
+
+<!-- # check assumptions and multicollinearity -->
+<!-- # mcol_check(fit, threshold = 5) # check for multicollinearity -->
+<!-- plot(fit) -->
+
+<!-- # make list of variables in model -->
+<!-- x <- str_remove(names(fit$model), "scale\\(") -->
+<!-- dv <- x[1] -->
+<!-- x <- str_remove(x, "\\)")[-1] -->
+
+<!-- # plot correlations between IVs -->
+<!-- cor_plot() -->
+
+<!-- # check for multicollinearity -->
+<!-- mc_check() -->
+
+<!-- ``` -->
+
+<!-- ## Collisions no fog -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # collisions no fog -->
+<!-- fit <- lm(collisions_no_fog_overall ~ scale(co_instruct_harm_no_fog) +  -->
+<!--             scale(co_instruct_help_no_fog) + scale(co_redundant_no_fog) + -->
+<!--             scale(incongruent_errors) + scale(inhibitory_cost) +  -->
+<!--             scale(sit.awareness_driver) + -->
+<!--             scale(congruent_errors_drone) + scale(repeat_errors_drone) -->
+<!--           # scale(prop_female) + scale(sex_co_driver) -->
+<!--             , data = vars) -->
+<!-- summary(fit) -->
+
+<!-- library("olsrr") -->
+<!-- ols_correlations(fit) -->
+
+<!-- # check assumptions and multicollinearity -->
+<!-- # mcol_check(fit, threshold = 5) # check for multicollinearity -->
+<!-- plot(fit) -->
+
+<!-- # make list of variables in model -->
+<!-- x <- str_remove(names(fit$model), "scale\\(") -->
+<!-- dv <- x[1] -->
+<!-- x <- str_remove(x, "\\)")[-1] -->
+
+<!-- # plot correlations between IVs -->
+<!-- cor_plot() -->
+
+<!-- # check for multicollinearity -->
+<!-- mc_check() -->
+
+<!-- ``` -->
+
+<!-- ## Speed fog -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # speed fog -->
+<!-- fit <- lm(speed_fog_overall ~ scale(co_info_help_fog) +  -->
+<!--             scale(co_redundant_fog) + scale(drive_question_fog) + -->
+<!--             scale(sit.awareness_driver) + scale(leadership_co_driver) + -->
+<!--             scale(resilience) + scale(resilience_drone) + scale(neuroticism_drone) -->
+<!--           # scale(prop_female) + scale(sex_driver) -->
+<!--           , data = vars) -->
+<!-- summary(fit) -->
+
+<!-- library("olsrr") -->
+<!-- ols_correlations(fit) -->
+
+<!-- # check assumptions and multicollinearity -->
+<!-- # mcol_check(fit, threshold = 5) # check for multicollinearity -->
+<!-- plot(fit) -->
+
+<!-- # make list of variables in model -->
+<!-- x <- str_remove(names(fit$model), "scale\\(") -->
+<!-- dv <- x[1] -->
+<!-- x <- str_remove(x, "\\)")[-1] -->
+
+<!-- # plot correlations between IVs -->
+<!-- cor_plot() -->
+
+<!-- # check for multicollinearity -->
+<!-- mc_check() -->
+
+<!-- ``` -->
+
+<!-- ## Speed no fog -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # speed no fog -->
+<!-- fit <- lm(speed_no_fog_overall ~ scale(co_instruct_harm_no_fog) +  -->
+<!--             scale(co_redundant_no_fog) + scale(drive_question_no_fog) + -->
+<!--             scale(resilience) + scale(resilience_drone) + scale(sex_driver),  -->
+<!--           data = vars) -->
+<!-- summary(fit) -->
+
+<!-- library("olsrr") -->
+<!-- ols_correlations(fit) -->
+
+<!-- # check assumptions and multicollinearity -->
+<!-- # mcol_check(fit, threshold = 5) # check for multicollinearity -->
+<!-- plot(fit) -->
+
+<!-- # make list of variables in model -->
+<!-- x <- str_remove(names(fit$model), "scale\\(") -->
+<!-- dv <- x[1] -->
+<!-- x <- str_remove(x, "\\)")[-1] -->
+
+<!-- # plot correlations between IVs -->
+<!-- cor_plot() -->
+
+<!-- # check for multicollinearity -->
+<!-- mc_check() -->
+
+<!-- ``` -->
+
+
+<!-- <!-- # regression for fog/no fog with driver issue removed --> -->
+<!-- <!-- ``` {r} --> -->
+<!-- <!-- # check for multicollinearlity.  --> -->
+<!-- <!-- # Threshold VIF >= 5 --> -->
+<!-- <!-- mcol_check <- function(fit, threshold) { --> -->
+<!-- <!--   if (any(vif(fit) >= threshold)) { --> -->
+<!-- <!--     print(paste0("multicollinearity detected for ", sum(vif(fit) >= threshold),  --> -->
+<!-- <!--           " variables")) --> -->
+<!-- <!--     sort(vif(fit), T)[c(1:sum(vif(fit) >= threshold))] --> -->
+<!-- <!--   } else { --> -->
+<!-- <!--     "no multicollinearity: all variables appear to be appropriate" --> -->
+<!-- <!--   } --> -->
+<!-- <!-- } --> -->
+
+<!-- <!-- # collisions fog --> -->
+<!-- <!-- fit <- lm(collisions_fog_overall ~  --> -->
+<!-- <!--             scale(co_instruct_help_fog) + scale(co_redundant_fog) + --> -->
+<!-- <!--             scale(incongruent_errors)  + scale(repeat_errors_drone) + --> -->
+<!-- <!--             scale(sit.awareness_driver), data = vars) --> -->
+<!-- <!-- summary(fit) --> -->
+<!-- <!-- mcol_check(fit, threshold = 5) # check for multicollinearity --> -->
+
+<!-- <!-- # collisions no fog --> -->
+<!-- <!-- fit <- lm(collisions_no_fog_overall ~ scale(co_instruct_help_no_fog) +  --> -->
+<!-- <!--             scale(co_redundant_no_fog) + --> -->
+<!-- <!--             scale(incongruent_errors) + scale(repeat_time) + --> -->
+<!-- <!--             scale(sit.awareness_driver)  --> -->
+<!-- <!--           # scale(prop_female) + scale(sex_co_driver) --> -->
+<!-- <!--           , data = vars) --> -->
+<!-- <!-- summary(fit) --> -->
+<!-- <!-- mcol_check(fit, threshold = 5) # check for multicollinearity --> -->
+
+<!-- <!-- # speed fog --> -->
+<!-- <!-- fit <- lm(speed_fog_overall ~ scale(co_total_help_fog) +  --> -->
+<!-- <!--             scale(co_question_fog) + scale(drive_question_fog) + --> -->
+<!-- <!--             scale(switch_errors_drone) + --> -->
+<!-- <!--             scale(sit.awareness_driver) + scale(leadership_co_driver) --> -->
+<!-- <!--           # scale(prop_female) + scale(sex_driver) --> -->
+<!-- <!--           , data = vars) --> -->
+<!-- <!-- summary(fit) --> -->
+<!-- <!-- mcol_check(fit, threshold = 5) # check for multicollinearity --> -->
+
+<!-- <!-- # speed no fog --> -->
+<!-- <!-- fit <- lm(speed_no_fog_overall ~ scale(drive_question_no_fog) + --> -->
+<!-- <!--             scale(resilience) + scale(repeat_time_drone) +  --> -->
+<!-- <!--             scale(switch_time_drone) + scale(sex_driver),  --> -->
+<!-- <!--           data = vars) --> -->
+<!-- <!-- summary(fit) --> -->
+<!-- <!-- mcol_check(fit, threshold = 5) # check for multicollinearity --> -->
+
+<!-- <!-- ``` --> -->
+
+
+<!-- # Trends overall -->
+<!-- # Plot of mean scores overall for each lap -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # plot mean score for each lap for each comms variable -->
+<!-- vars %>%  -->
+<!--   select(team, co_info_harm_1:drive_total_5) %>%  -->
+<!--   gather(var, val, -team) %>%  -->
+<!--   mutate(lap = str_extract(var, "_[1-5]"), -->
+<!--          lap = as.numeric(str_remove(lap, "_")), -->
+<!--          var = str_remove(var, "_[1-5]")) %>%  -->
+<!--   group_by(var, lap) %>%  -->
+<!--   summarise(mean = mean(val, na.rm = T)) %>%  -->
+<!--   # filter(var == "co_info_harm") %>%  -->
+<!--   ggplot(aes(x=lap, y=mean)) + -->
+<!--   geom_line(aes(group = 1)) + -->
+<!--   facet_wrap(~var, scales = "free_y") + -->
+<!--   theme_minimal() -->
+
+<!-- ``` -->
+
+<!-- # Which trends are sig. overall? -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # fit polynomial regression overall -->
+<!-- library(broom) -->
+<!-- x <- vars %>%  -->
+<!--   select(team, co_info_harm_1:drive_total_5) %>%  -->
+<!--   select(-contains("ratio")) %>%  -->
+<!--   gather(var, val, -team) %>% -->
+<!--   mutate(lap = str_extract(var, "_[1-5]"), -->
+<!--          lap = as.numeric(str_remove(lap, "_")), -->
+<!--          var = str_remove(var, "_[1-5]")) %>%  -->
+<!--   na.omit() %>%  -->
+<!--   nest(data = c(lap, val, team)) %>% -->
+<!--   mutate(fit = map(data, ~ lm(val ~ poly(lap, degree = 3), .)), -->
+<!--          tidy_fit = map(fit, tidy)) %>%  -->
+<!--   unnest(tidy_fit) %>% -->
+<!--   select(-statistic, -std.error) %>% -->
+<!--   mutate(polynomial = str_extract(term, "[0-9]+$"), -->
+<!--          polynomial = str_c("poly_", polynomial), -->
+<!--          polynomial = ifelse(is.na(polynomial), "intercept", polynomial)) %>% -->
+<!--   select(-data, -fit, -term) %>%  -->
+<!--   filter(p.value <= .05) %>%  -->
+<!--   filter(polynomial != "intercept") -->
+
+<!-- kable(x) -->
+
+<!-- ``` -->
+
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # # alternative method that provides complete summary data -->
+<!-- # function to standardise data for regression -->
+<!-- # standardise <- function(x) { -->
+<!-- #   (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE) -->
+<!-- # } -->
+
+<!-- name <- names(vars %>% select(co_info_help_overall:co_ratio_overall)) -->
+<!-- name <- gsub("_overall", "", name) -->
+
+<!-- # alternative method that provides complete summary data -->
+<!-- lapply(name, function(i) { -->
+<!--   x <- vars %>% -->
+<!--     select(team, contains(i), -contains("fog"),  -->
+<!--            -contains("overall"), -contains("intercept"), -contains("poly")) %>%  -->
+<!--     # ungroup() %>% -->
+<!--     # mutate_if(is.numeric, standardise) %>% -->
+<!--     gather(var, val, -team) %>%  -->
+<!--     mutate(lap = str_extract(var, "_[1-5]"), -->
+<!--            lap = as.numeric(str_remove(lap, "_")), -->
+<!--            var = str_remove(var, "_[1-5]")) %>%  -->
+<!--            # val = ifelse(val == Inf, NA, val) -->
+<!--     na.omit() -->
+
+<!--   fit <- lm(val ~ poly(lap, degree = 3), data = x) -->
+
+<!--   summary(fit) -->
+
+<!-- }) -->
+
+<!-- ``` -->
+
+<!-- # Does the change in communication predict the change in performance? -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # does the change in comms (trend) predict the change in performance? -------- -->
+<!-- name <- c("collisions_overall_poly_1_estimate", "collisions_overall_poly_2_estimate",  -->
+<!--           "collisions_overall_poly_3_estimate") -->
+
+<!-- lapply(name, function(i) { -->
+<!--   tmp <- i -->
+<!--   tmp <- str_extract(tmp, "poly_[1-5]") -->
+
+<!-- x <- vars %>% select(driving_years:neuroticism, driving_years_drone:neuroticism_drone, -->
+<!--                      contains("intercept"), contains(tmp), -contains("speed"),  -->
+<!--                      -contains("collisions"), -contains("p.value"), -contains("ratio"), i) %>%  -->
+<!--   correlate() %>% focus(i) %>%  -->
+<!--   gather(var, val, -rowname) %>%  -->
+<!--   mutate(val = round(val, 2)) %>%  -->
+<!--   spread(var, val) -->
+
+<!-- x[x > -.270 & x < .270] <- NA -->
+
+<!-- x <- x %>% na.omit() -->
+
+<!-- kable(x) -->
+<!-- }) -->
+<!-- ``` -->
+
+
+<!-- # Relationship between communication variables and trends -->
+<!-- ## Collisions overall -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(contains("intercept"), contains("poly"), -contains("p.value"),  -->
+<!--          -contains("animal"), -contains("block"), -contains("ice"),  -->
+<!--          -contains("fall"), -contains("fog"), -contains("speed"),  -->
+<!--          -contains("events"), -contains("none"), -contains("ratio"), leadership:sit.awareness_driver) %>%  -->
+<!--   correlate() %>% focus(collisions_overall_intercept_estimate, collisions_overall_poly_1_estimate,  -->
+<!--                         collisions_overall_poly_2_estimate, collisions_overall_poly_3_estimate) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, contains("collisions")) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+<!-- <!-- ## Collisions no events --> -->
+<!-- <!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} --> -->
+<!-- <!-- x <- vars %>%  --> -->
+<!-- <!--   select(contains("intercept"), contains("poly"), -contains("p.value"),  --> -->
+<!-- <!--          -contains("animal"), -contains("block"), -contains("ice"),  --> -->
+<!-- <!--          -contains("fall"), -contains("fog"), -contains("speed"),  --> -->
+<!-- <!--          -contains("overall_intercept"), -contains("overall_poly"), --> -->
+<!-- <!--          -contains("events"), leadership:sit.awareness_driver) %>%  --> -->
+<!-- <!--   correlate() %>% focus(collisions_none_intercept_estimate, collisions_none_poly_1_estimate, --> -->
+<!-- <!--                         collisions_none_poly_2_estimate, collisions_none_poly_3_estimate) --> -->
+
+<!-- <!-- col_names <- x %>% select(rowname) --> -->
+
+<!-- <!-- x <- round(x[,-1],2) %>%  --> -->
+<!-- <!--   bind_cols(col_names) %>%  --> -->
+<!-- <!--   select(rowname, contains("collisions")) --> -->
+
+<!-- <!-- x[x < .270] <- "-" --> -->
+
+<!-- <!-- kable(x) --> -->
+<!-- <!-- ``` --> -->
+
+
+<!-- <!-- ## Collisions events --> -->
+<!-- <!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} --> -->
+<!-- <!-- x <- vars %>%  --> -->
+<!-- <!--   select(contains("intercept"), contains("poly"), -contains("p.value"),  --> -->
+<!-- <!--          -contains("animal"), -contains("block"), -contains("ice"),  --> -->
+<!-- <!--          -contains("fall"), -contains("fog"), -contains("speed"),  --> -->
+<!-- <!--          -contains("overall_intercept"), -contains("overall_poly"), --> -->
+<!-- <!--          -contains("none"), leadership:sit.awareness_driver) %>%  --> -->
+<!-- <!--   correlate() %>% focus(collisions_events_intercept_estimate, collisions_events_poly_1_estimate, --> -->
+<!-- <!--                         collisions_events_poly_2_estimate, collisions_events_poly_3_estimate) --> -->
+
+<!-- <!-- col_names <- x %>% select(rowname) --> -->
+
+<!-- <!-- x <- round(x[,-1],2) %>%  --> -->
+<!-- <!--   bind_cols(col_names) %>%  --> -->
+<!-- <!--   select(rowname, contains("collisions")) --> -->
+
+<!-- <!-- x[x < .270] <- "-" --> -->
+
+<!-- <!-- kable(x) --> -->
+<!-- <!-- ``` --> -->
+
+<!-- ## Speed overall -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- x <- vars %>%  -->
+<!--   select(contains("intercept"), contains("poly"), -contains("p.value"),  -->
+<!--          -contains("animal"), -contains("block"), -contains("ice"),  -->
+<!--          -contains("fall"), -contains("fog"), -contains("collisions"),  -->
+<!--          -contains("events"), -contains("none"), -contains("ratio"), leadership:sit.awareness_driver) %>%  -->
+<!--   correlate() %>% focus(speed_overall_intercept_estimate, speed_overall_poly_1_estimate,  -->
+<!--                         speed_overall_poly_2_estimate, speed_overall_poly_3_estimate) -->
+
+<!-- col_names <- x %>% select(rowname) -->
+
+<!-- x <- round(x[,-1],2) %>%  -->
+<!--   bind_cols(col_names) %>%  -->
+<!--   select(rowname, contains("speed")) -->
+
+<!-- x[x < .270] <- "-" -->
+
+<!-- kable(x) -->
+<!-- ``` -->
+
+<!-- <!-- Examples of driver's with large positive quadratic terms: tends to be an initial improvement then a decline in performance. --> -->
+<!-- <!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} --> -->
+<!-- <!-- ids <- vars %>%  --> -->
+<!-- <!--   select(team, collisions_overall_poly_2_estimate) %>%  --> -->
+<!-- <!--   top_n(n = 4) --> -->
+
+<!-- <!-- plot_trend <- function() { --> -->
+<!-- <!--   vars %>%  --> -->
+<!-- <!--     filter(team %in% ids$team) %>%  --> -->
+<!-- <!--     select(team, collisions_1:collisions_5) %>%  --> -->
+<!-- <!--     gather(var, val, -team) %>%  --> -->
+<!-- <!--     separate(var, into = c("col", "lap")) %>%  --> -->
+<!-- <!--     ggplot(aes(x=lap, y=val)) + --> -->
+<!-- <!--     geom_point() + --> -->
+<!-- <!--     geom_line(group=1) + --> -->
+<!-- <!--     facet_wrap(~team, scales = "free_y") + --> -->
+<!-- <!--     theme_classic() --> -->
+<!-- <!-- } --> -->
+
+<!-- <!-- plot_trend() --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- Examples of driver's with large negative quadratic terms: tends to be an initial decline then an improvement in performance. --> -->
+<!-- <!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} --> -->
+<!-- <!-- ids <- vars %>%  --> -->
+<!-- <!--   select(team, collisions_overall_poly_2_estimate) %>%  --> -->
+<!-- <!--   top_n(collisions_overall_poly_2_estimate, n = -4) --> -->
+
+<!-- <!-- plot_trend() --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- Examples of driver's with large positive cubic terms --> -->
+<!-- <!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} --> -->
+<!-- <!-- ids <- vars %>%  --> -->
+<!-- <!--   select(team, collisions_overall_poly_3_estimate) %>%  --> -->
+<!-- <!--   top_n(n = 4) --> -->
+
+<!-- <!-- plot_trend() --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- Examples of driver's with large negative cubic terms --> -->
+<!-- <!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} --> -->
+<!-- <!-- ids <- vars %>%  --> -->
+<!-- <!--   select(team, collisions_overall_poly_3_estimate) %>%  --> -->
+<!-- <!--   top_n(n = -4) --> -->
+
+<!-- <!-- plot_trend() --> -->
+<!-- <!-- ``` --> -->
+
+<!-- <!-- ## Speed --> -->
+<!-- <!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} --> -->
+<!-- <!-- x <- vars %>%  --> -->
+<!-- <!--   select(contains("intercept"), contains("poly"), -contains("p.value"),  --> -->
+<!-- <!--          -contains("animal"), -contains("block"), -contains("ice"),  --> -->
+<!-- <!--          -contains("fall"), -contains("fog"), -contains("collisions"), --> -->
+<!-- <!--          leadership:sit.awareness_driver) %>%  --> -->
+<!-- <!--   correlate() %>% focus(speed_overall_intercept_estimate, speed_overall_poly_1_estimate,  --> -->
+<!-- <!--          speed_overall_poly_2_estimate, speed_overall_poly_3_estimate,  --> -->
+<!-- <!--          speed_none_intercept_estimate, speed_none_poly_1_estimate, speed_none_poly_2_estimate, --> -->
+<!-- <!--          speed_none_poly_3_estimate, speed_events_intercept_estimate, speed_events_poly_1_estimate, --> -->
+<!-- <!--          speed_events_poly_2_estimate, speed_events_poly_3_estimate) --> -->
+
+<!-- <!-- col_names <- x %>% select(rowname) --> -->
+
+<!-- <!-- x <- round(x[,-1],2) %>%  --> -->
+<!-- <!--   bind_cols(col_names) %>%  --> -->
+<!-- <!--   select(rowname, contains("speed")) --> -->
+
+<!-- <!-- x[x < .270] <- "-" --> -->
+
+<!-- <!-- kable(x) --> -->
+<!-- <!-- ``` --> -->
+
+
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # collisions linear -->
+<!-- fit <- lm(collisions_overall_poly_1_estimate ~ scale(co_total_help_poly_1_estimate) + -->
+<!--             scale(incongruent_errors) + scale(inhibitory_cost) + -->
+<!--             scale(repeat_errors_drone)  + scale(resilience) + -->
+<!--             scale(resilience_drone), data = vars) -->
+<!-- summary(fit) -->
+
+<!-- # collisions quadratic -->
+<!-- fit <- lm(collisions_overall_poly_2_estimate ~ scale(co_total_harm_poly_2_estimate) +  -->
+<!--             scale(co_total_help_poly_2_estimate) + scale(drive_total_poly_2_estimate) + -->
+<!--             scale(resilience) + scale(switch_cost) + scale(switch_errors_drone) + -->
+<!--             scale(incongruent_errors_drone) + scale(repeat_errors_drone) -->
+<!--           , data = vars) -->
+<!-- summary(fit) -->
+
+
+<!-- # collisions cubic -->
+<!-- fit <- lm(collisions_overall_poly_3_estimate ~ scale(co_total_poly_3_estimate) +  -->
+<!--             # scale(co_total_help_poly_3_estimate) + scale(co_redundant_overall) + -->
+<!--             scale(drive_total_poly_3_estimate) + scale(extraversion) + -->
+<!--             scale(repeat_errors_drone) + scale(switch_errors_drone) +  -->
+<!--             scale(agreeableness_drone), data = vars) -->
+<!-- summary(fit) -->
+
+<!-- # check for multicollinearlity. Is VIF greater than 5 for any variable? -->
+<!-- vif(fit) -->
+
+<!-- ``` -->

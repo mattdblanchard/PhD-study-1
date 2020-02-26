@@ -7,6 +7,9 @@ output/
 # manuscript in preparation
 manuscript/
 
+# relevant documents
+docs/
+
 # History files
 .Rhistory
 .Rapp.history

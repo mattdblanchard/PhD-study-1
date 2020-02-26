@@ -1,0 +1,554 @@
+---
+title: "outlier_analyses"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {r load, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(corrr)
+library(here)
+library(knitr)
+library(olsrr)
+library(GGally)
+library(car)
+
+vars <- read_csv(here("data/200221_comms_efa_vars.csv")) %>% 
+    filter(!team %in% c("17080712_1", "17080810_1", "17081510_2"))
+  # identified a number of outlier teams had major driver-drone networking issues
+
+
+# # read factor scores for comms vars
+# efa <- read_csv(here("data/200220_comms_efa_spss_n55.csv")) %>% 
+#   select(team, inconsistent_codriver, terrible_codriver, helpful_exchange)
+# 
+# # add comms factors to dataset
+# vars <- vars %>% left_join(efa, by = "team")
+
+# select which communication variables to analyse
+comms_fac <- names(vars %>% select(inconsistent_codriver, terrible_codriver, helpful_exchange))
+
+raw <- read_csv(here("data/200221_comms_raw.csv")) %>% 
+  filter(!team %in% vars$team)
+
+# read demographics
+demo <- read_csv(here("data/demographics.csv"))
+
+# # print general sim data for potential outliers
+# teams <- c("17032915_2", "17080712_1", "17080810_1", "17080810_2")
+
+# remove outliers -----------------------------------------------
+# REMOVE:
+# 17080712_1 has over 600 collision, has  large deviation and has major technical issue
+
+# need to examine closer
+# 17032915_2 high collisions_overall high incongruent_errors
+# 17080810_1 high collisions_overall mean incongruent_errors
+# 17080810_2 high collisions_overall low incongruent_errors
+
+cols <- vars[c(26, 33, 48),] %>% select(team)
+# need to examine closer
+# 17080810_2 high speed low switch_time_drone
+# 17040711_1 low speed low switch_time_drone
+speed <- vars[c(39, 44, 48),] %>% select(team)
+ 
+# need to examine closer
+
+dist <- vars[c(3, 6, 15, 52),] %>% select(team)
+ 
+all <- vars[c(26, 33, 48, 39, 44, 3, 6, 15, 52),] %>% select(team)
+
+```
+
+## Potential outliers
+Removed team 17080712_1 with over 600 collisions and massive distance deviation
+
+## Collisions
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>%
+  filter(team %in% cols$team) %>% 
+  select(team, collisions_overall, speed_overall, time_taken_overall, distance_overall,
+         distance_overall_deviation, events_missed_overall, issue, issue_note)
+
+x <- demo %>%
+  separate(uid, c("team", "c"), sep = "-") %>% 
+  filter(team %in% cols$team) %>% 
+  mutate(c = ifelse(c == "d1" | c == "g1", "drone", "driver")) %>% 
+  gather(var, val, -team, -c) %>% 
+  unite(var, var, c, sep = "_") %>% 
+  mutate(var = str_remove(var, "_driver")) %>% 
+  spread(var, val) %>% 
+  left_join(x, by = "team")
+
+kable(x)
+
+x <- vars %>% 
+  filter(team %in% cols$team) %>% 
+  select(team, driving_years:neuroticism,
+         driving_years_drone:neuroticism_drone) %>% 
+  gather(var, val, -team) %>%
+  group_by(var) %>% 
+  mutate(m = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T)) %>% 
+  group_by(team, var) %>% 
+  summarise(z = abs((val - m)/sd)) %>% 
+  filter(z > 1.5)
+
+if (nrow(x) != 0) {
+  kable(x)
+} else {
+  print("All scores on psych variables are within 1.5 SD of the mean"
+  )
+}
+
+
+```
+
+## Speed
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>%
+  filter(team %in% speed$team) %>% 
+  select(team, collisions_overall, speed_overall, time_taken_overall, distance_overall,
+         distance_overall_deviation, events_missed_overall, issue, issue_note)
+
+x <- demo %>%
+  separate(uid, c("team", "c"), sep = "-") %>% 
+  filter(team %in% speed$team) %>% 
+  mutate(c = ifelse(c == "d1" | c == "g1", "drone", "driver")) %>% 
+  gather(var, val, -team, -c) %>% 
+  unite(var, var, c, sep = "_") %>% 
+  mutate(var = str_remove(var, "_driver")) %>% 
+  spread(var, val) %>% 
+  left_join(x, by = "team")
+
+kable(x)
+
+x <- vars %>% 
+  filter(team %in% speed$team) %>% 
+  select(team, driving_years:neuroticism,
+         driving_years_drone:neuroticism_drone) %>% 
+  gather(var, val, -team) %>%
+  group_by(var) %>% 
+  mutate(m = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T)) %>% 
+  group_by(team, var) %>% 
+  summarise(z = abs((val - m)/sd)) %>% 
+  filter(z > 1.5)
+
+if (nrow(x) != 0) {
+  kable(x)
+} else {
+  print("All scores on psych variables are within 1.5 SD of the mean"
+  )
+}
+
+```
+
+## Distance deviation
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>%
+  filter(team %in% dist$team) %>% 
+  select(team, collisions_overall, speed_overall, time_taken_overall, distance_overall,
+         distance_overall_deviation, events_missed_overall, issue, issue_note)
+
+x <- demo %>%
+  separate(uid, c("team", "c"), sep = "-") %>% 
+  filter(team %in% dist$team) %>% 
+  mutate(c = ifelse(c == "d1" | c == "g1", "drone", "driver")) %>% 
+  gather(var, val, -team, -c) %>% 
+  unite(var, var, c, sep = "_") %>% 
+  mutate(var = str_remove(var, "_driver")) %>% 
+  spread(var, val) %>% 
+  left_join(x, by = "team")
+
+kable(x)
+
+x <- vars %>% 
+  filter(team %in% dist$team) %>% 
+  select(team, driving_years:neuroticism,
+         driving_years_drone:neuroticism_drone) %>% 
+  gather(var, val, -team) %>%
+  group_by(var) %>% 
+  mutate(m = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T)) %>% 
+  group_by(team, var) %>% 
+  summarise(z = abs((val - m)/sd)) %>% 
+  filter(z > 1.5)
+
+if (nrow(x) != 0) {
+  kable(x)
+} else {
+  print("All scores on psych variables are within 1.5 SD of the mean"
+  )
+}
+
+```
+
+## Collisions analyses with outliers removed
+``` {r collisions, echo=FALSE, message=FALSE, warning=FALSE}
+# corrs <- data.frame(NULL)
+
+# remove outliers one at a time
+map(cols$team, function(t) {
+  print(paste0("Team ", t, " removed from analyses"))
+  
+  tmp <- vars %>%
+    filter(team != t)
+  # tmp <- vars %>%
+  #   filter(team != cols$team[1])
+  
+  # tmp <- vars %>%
+  #   filter(!team %in% cols$team)
+  
+  # correlations
+  cor_tmp <- tmp %>% 
+    select(comms_fac, leadership:sit.awareness_driver, driving_years:neuroticism, 
+           driving_years_drone:neuroticism_drone, age_co_driver:prop_female,
+           -contains("ratio"),
+           collisions_overall, speed_overall, distance_overall_deviation) %>% 
+    correlate() %>% focus(collisions_overall, speed_overall, distance_overall_deviation) %>% 
+    gather(var, val, -rowname) %>% 
+    mutate(val = round(val, 2)) %>% 
+    spread(var, val)
+  
+  cor_tmp[cor_tmp > -.26 & cor_tmp < .26] <- NA
+  
+  cor_tmp <- cor_tmp %>% select(rowname, collisions_overall) %>% na.omit()
+  print(cor_tmp)
+  
+  # select variables
+  var <- cor_tmp %>% 
+    select(rowname) %>% 
+    filter(!rowname %in% c("sex_driver", "sit.awareness", "sit.awareness_driver", "sit.awareness_co_driver", "teamwork", "leadership", "leadership_driver", "leadership_co_driver"))
+  
+  
+  # mean center IVs
+  var_std <- tmp %>% 
+  select(var$rowname) %>% 
+    mutate(prop_female = factor(prop_female)) %>% 
+    mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+  print(psych::describe(var_std))
+  
+  # regression without interactions
+  fit <- lm(tmp$collisions_overall ~ .,
+            data = var_std)
+  
+  print(summary(fit))
+  
+  print(ols_correlations(fit))
+  
+  # check assumptions and multicollinearity
+  # mcol_check(fit, threshold = 5) # check for multicollinearity
+  plot(fit)
+  
+  # make list of variables in model
+  dv <- "collisions_overall"
+  x <- names(var_std)
+  
+  # plot correlations between IVs
+  var_std <- var_std %>% mutate(prop_female = as.numeric(prop_female))
+  
+  var_std %>% ggcorr(method = "pairwise.complete.obs", 
+                              label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot
+                              hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels
+  
+  # check for multicollinearity
+  library(mctest)
+  x <- tmp %>% select(names(var_std))
+  y <- tmp %>% select(dv)
+  mc1 <- omcdiag(x, y)
+  mc2 <- imcdiag(x, y)
+  print(mc1)
+  print(mc2)
+  
+  # store correlations into dataframe
+  # corrs <- list(corrs, cor_tmp)
+  
+  # if (t == cols$team[length(cols$team)]) {
+  # print(corrs)
+  # }
+  
+})
+
+```
+
+## Speed analyses with outliers removed
+``` {r speed, echo=FALSE, message=FALSE, warning=FALSE}
+# remove outliers one at a time
+map(speed$team, function(t) {
+    print(paste0("Team ", t, " removed from analyses"))
+  
+    tmp <- vars %>%
+    filter(team != t)
+  
+  # tmp <- vars %>%
+  #   filter(!team %in% cols$team)
+  
+  # correlations
+  cor_tmp <- tmp %>% 
+    select(comms_fac, leadership:sit.awareness_driver, driving_years:neuroticism, 
+           driving_years_drone:neuroticism_drone, age_co_driver:prop_female,
+           -contains("ratio"),
+           collisions_overall, speed_overall, distance_overall_deviation) %>% 
+    correlate() %>% focus(collisions_overall, speed_overall, distance_overall_deviation) %>% 
+    gather(var, val, -rowname) %>% 
+    mutate(val = round(val, 2)) %>% 
+    spread(var, val)
+  
+  cor_tmp[cor_tmp > -.26 & cor_tmp < .26] <- NA
+  
+  cor_tmp <- cor_tmp %>% select(rowname, speed_overall) %>% na.omit()
+  print(cor_tmp)
+  
+  # select variables
+  var <- cor_tmp %>% 
+    select(rowname) %>% 
+    filter(!rowname %in% c("sex_driver", "sit.awareness", "sit.awareness_driver", "sit.awareness_co_driver", "teamwork", "leadership", "leadership_driver", "leadership_co_driver"))
+  
+  
+  # mean center IVs
+  var_std <- tmp %>% 
+  select(var$rowname) %>% 
+    mutate(prop_female = factor(prop_female)) %>% 
+    mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+  print(psych::describe(var_std))
+  
+  # regression without interactions
+  fit <- lm(tmp$speed_overall ~ .,
+            data = var_std)
+  
+  print(summary(fit))
+  
+  print(ols_correlations(fit))
+  
+  # check assumptions and multicollinearity
+  # mcol_check(fit, threshold = 5) # check for multicollinearity
+  plot(fit)
+  
+  # make list of variables in model
+  dv <- "speed_overall"
+  x <- names(var_std)
+  
+  # plot correlations between IVs
+  var_std <- var_std %>% mutate(prop_female = as.numeric(prop_female))
+  
+  var_std %>% ggcorr(method = "pairwise.complete.obs", 
+                              label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot
+                              hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels
+  
+  # check for multicollinearity
+  library(mctest)
+  x <- tmp %>% select(names(var_std))
+  y <- tmp %>% select(dv)
+  mc1 <- omcdiag(x, y)
+  mc2 <- imcdiag(x, y)
+  print(mc1)
+  print(mc2)
+
+})
+
+```
+
+
+## Distance deviation analyses with outliers removed
+``` {r distance, echo=FALSE, message=FALSE, warning=FALSE}
+# remove outliers one at a time
+map(dist$team, function(t) {
+  print(paste0("Team ", t, " removed from analyses"))
+  
+  tmp <- vars %>%
+    filter(team != t)
+  
+  # tmp <- vars %>%
+  #   filter(!team %in% cols$team)
+  
+  # correlations
+  cor_tmp <- tmp %>% 
+    select(comms_fac, leadership:sit.awareness_driver, driving_years:neuroticism, 
+           driving_years_drone:neuroticism_drone, age_co_driver:prop_female,
+           -contains("ratio"),
+           collisions_overall, speed_overall, distance_overall_deviation) %>% 
+    correlate() %>% focus(collisions_overall, speed_overall, distance_overall_deviation) %>% 
+    gather(var, val, -rowname) %>% 
+    mutate(val = round(val, 2)) %>% 
+    spread(var, val)
+  
+  cor_tmp[cor_tmp > -.26 & cor_tmp < .26] <- NA
+  
+  cor_tmp <- cor_tmp %>% select(rowname, distance_overall_deviation) %>% na.omit()
+  print(cor_tmp)
+  
+  # select variables
+  var <- cor_tmp %>% 
+    select(rowname) %>% 
+    filter(!rowname %in% c("sex_driver", "sit.awareness", "sit.awareness_driver", "sit.awareness_co_driver", "teamwork", "leadership", "leadership_driver", "leadership_co_driver"))
+  
+  
+  # mean center IVs
+  var_std <- tmp %>% 
+  select(var$rowname) %>% 
+    mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+  print(psych::describe(var_std))
+  
+  # regression without interactions
+  fit <- lm(tmp$distance_overall_deviation ~ .,
+            data = var_std)
+  
+  print(summary(fit))
+  
+  print(ols_correlations(fit))
+  
+  # check assumptions and multicollinearity
+  # mcol_check(fit, threshold = 5) # check for multicollinearity
+  plot(fit)
+  
+  # make list of variables in model
+  dv <- "distance_overall_deviation"
+  x <- names(var_std)
+  
+  # plot correlations between IVs
+  var_std %>% ggcorr(method = "pairwise.complete.obs", 
+                              label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot
+                              hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels
+  
+  # check for multicollinearity
+  library(mctest)
+  x <- tmp %>% select(names(var_std))
+  y <- tmp %>% select(dv)
+  mc1 <- omcdiag(x, y)
+  mc2 <- imcdiag(x, y)
+  print(mc1)
+  print(mc2)
+
+})
+
+```
+
+## Investigate distance deviation outliers
+Not sure why the regression results change so much when any of these outliers are removed. Need to investigate further.
+
+When did the deviation occur for each of the outlier teams?
+``` {r distance outliers, echo=FALSE, message=FALSE, warning=FALSE}
+
+vars %>% 
+  select(team, distance_1_deviation:distance_5_deviation) %>% 
+  filter(team %in% dist$team) %>% 
+  gather(var, val, -team) %>% 
+  ggplot(aes(x = var, y = val, colour=team)) +
+  geom_line(aes(group=team)) +
+  theme_minimal()
+  
+
+
+```
+
+All teams had good network connections. The codrivers all saw the traffic experienced by the drivers and the arrows appeared correctly on the codrivers screens.
+
+For teams 16110214_1 and 17081510_2 a huge deviation occurred during lap 4. 
+I have checked the screen capture videos for these 2 teams.
+
+For team 16110214_1 the codriver paid no attention to the arrows throughout the whole drive. They were often saying "keep going straight" regardless of the direction the arrows pointed. During lap 4 they directed the driver the wrong way twice at the same black ice intersection. This sent the driver on a large loop. The first time they told the driver to turn right (instead of left), the second time they directed the driver straight and the third time the driver was directed left. The driver listened to the codriver's direction even when they could see it was wrong. For substantial periods of lap 4 the codriver was not following the driver with the drone but they continued to direct and offer info/instruction. The codriver clearly did not follow instructions.
+This team should be high on inconsistent_codriver and maybe terrible codriver.
+
+For team 17081510_2 the misdirection occurred at the same black ice intersection in lap 4 although this time it was a design flaw that sent the driver the wrong way. They entered the intersection with the intention of turning right but when they lost control on the black ice and overshot the turn they could see green lights in the distance for the next intersection and they were pointing straight so they continued in that direction. This happened exactly the same a second time when they overshot the black ice intersection. On the third attempt to turn left they did not overshoot it and made it. It seems the driver was following instructions but a design flaw sent them the wrong way.
+This should not influence the teams scores on the comms factors.
+
+For team 16101114_1 large deviations occured in laps 1 and 5. During lap 1 the driver was not doing a good job of monitoring the arrows and made a number of wrong turns that went uncorrected because the codriver was also not paying attention to the arrows. During lap 5 the driver missed a turn (again they didn't notice) and when the codriver tried to correct them the driver could see arrows at the next intersection and decided to continue in the wrong direction.
+This team should score positively on helpful codriver.
+
+Let's check the comms factor scores for each of these teams.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+vars %>% 
+  select(team, comms_fac) %>% 
+  filter(team %in% dist$team[1:3])
+
+
+```
+
+I recoded the comms for 16110214_1. How do the new scores on the comms variables and comms factors compare to the original scores.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# new
+x <- vars %>% 
+  filter(team == "16110214_1") %>% 
+  select(comms_fac, co_info_help_overall:drive_total_overall, -contains("ratio")) %>% 
+  gather(var, val)
+
+print("New scores")
+print(x)
+
+# original
+efa2 <- read_csv(here("data/200219_comms_efa_spss_n55.csv")) %>%
+  select(team, inconsistent_codriver, terrible_codriver, helpful_codriver)
+
+x <- read_csv(here("data/200207_comms_vars.csv")) %>% 
+  left_join(efa2, by = "team") %>% 
+  filter(team == "16110214_1") %>% 
+  select(inconsistent_codriver, terrible_codriver, helpful_codriver, co_info_help_overall:drive_total_overall, -contains("ratio")) %>% 
+  gather(var, val)
+
+print("Original scores")
+print(x)
+
+```
+
+
+For team 17081512_2 there was no large deviation so they were not an outlier on the DV (distance deviation). Maybe they were an outlier on the comms factors. Let's take a look.
+
+17081512_2 were initially identified as having a large influence on the distance deviation results because they had a very high score on the terrible codriver factor. I reviewed the coding and made some changes. How do the new scores on the comms variables and comms factors compare to the original scores.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# new
+x <- vars %>% 
+  filter(team == "17081512_2") %>% 
+  select(comms_fac, co_info_help_overall:drive_total_overall, -contains("ratio")) %>% 
+  gather(var, val)
+
+print("New scores")
+print(x)
+
+# original
+efa2 <- read_csv(here("data/200219_comms_efa_spss_n55.csv")) %>%
+  select(team, inconsistent_codriver, terrible_codriver, helpful_codriver)
+
+x <- read_csv(here("data/200207_comms_vars.csv")) %>% 
+  left_join(efa2, by = "team") %>% 
+  filter(team == "17081512_2") %>% 
+  select(inconsistent_codriver, terrible_codriver, helpful_codriver, co_info_help_overall:drive_total_overall, -contains("ratio")) %>% 
+  gather(var, val)
+
+print("Original scores")
+print(x)
+
+```
+
+
+
+## Investigate speed outliers
+I recoded the comms for each of the speed outliers because the results were different with each outlier removed separately. How do the new scores on the comms variables and comms factors compare to the original scores.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# new
+x <- vars %>% 
+  filter(team %in% speed$team) %>% 
+  select(team, comms_fac)
+
+print("New scores")
+print(x)
+
+# original
+efa2 <- read_csv(here("data/200219_comms_efa_spss_n55.csv")) %>%
+  select(team, inconsistent_codriver, terrible_codriver, helpful_codriver)
+
+x <- read_csv(here("data/200207_comms_vars.csv")) %>% 
+  left_join(efa2, by = "team") %>% 
+  filter(team %in% speed$team) %>% 
+  select(team, inconsistent_codriver, terrible_codriver, helpful_codriver)
+
+print("Original scores")
+print(x)
+
+```
