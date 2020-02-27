@@ -1,0 +1,196 @@
+---
+title: "Untitled"
+author: "Matt Blanchard"
+date: "27/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+library(car) # load package to diagnose multicollinearity
+library(GGally)
+library(olsrr)
+library(tidyverse)
+library(corrr)
+library(here)
+library(knitr)
+library(mctest)
+
+vars <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
+      filter(!team %in% c("17080712_1", "17080810_1"))  # remove outliers: collisions("17080810_1"),
+
+raw <- read_csv(here("data/200221_comms_raw.csv")) %>% 
+  filter(team %in% vars$team) # remove outlier teams
+
+# select which communication variables to analyse
+comms_fac <- names(vars %>% select(inconsistent_codriver, terrible_codriver, helpful_exchange))
+
+
+
+select_vars <- function(dv_index) {
+  a <- na.omit(x[c(1, dv_index)]) %>% select(rowname) %>% 
+    filter(!rowname %in% c("sex_driver", "sex_co_driver", "sit.awareness_driver", 
+                           "sit.awareness_co_driver", "sit.awareness",
+                           "leadership_driver", "leadership_co_driver", "leadership"))
+  
+  vars %>% select(a$rowname)
+}
+
+# function to select IVs, fit regression model, and run diagnostics for overall sim performance vars
+regress <- function(dv) {
+  # print dv name
+  print(paste0("DV = ", dv))
+  n <- names(var)
+  
+  var_std <- var %>% 
+    # mutate(prop_female = factor(prop_female)) %>% 
+    mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+  print(psych::describe(var_std))
+  
+  # create regression formula
+  fm <- as.formula(paste0("vars$", dv, " ~ ", paste(n, collapse = " + ")))
+  
+  # fit model
+  f <- lm(fm, data = var)
+  
+  # results
+  print(summary(f))
+  
+  ols_correlations(f)
+   
+  # check assumptions and multicollinearity
+  plot(f)
+  
+  # plot correlations between IVs
+  p <- vars %>% select(n) %>% 
+    ggcorr(method = "pairwise.complete.obs", 
+           label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot
+           hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels
+  # more detailed plot: distribution, scatterplot, correlations
+  # vars %>% select(x, issue) %>% 
+  #   ggpairs(., lower = list(continuous = wrap("smooth", alpha = 0.3, size=0.1)))
+  
+  # print correlation plot
+  print(p)
+
+  # check for multicollinearity
+  print(omcdiag(vars %>% select(n), vars %>% select(dv)))
+
+  print(imcdiag(vars %>% select(n), vars %>% select(dv)))
+   
+}
+
+
+
+# function to select IVs, fit regression model, and run diagnostics for event sim performance vars (no fog/fog)
+fog_regress <- function(dv) {
+  # select variables
+  a <- na.omit(x %>% select(rowname, dv)) %>% 
+    # select(rowname) %>% 
+    filter(!rowname %in% c("sit.awareness_driver", "sit.awareness_co_driver", "sit.awareness",
+                           "leadership_driver", "leadership_co_driver", "leadership"))
+  
+  a <- a %>% filter(!rowname %in% c("sex_driver", "sex_co_driver"))
+  
+  var <- vars %>% select(dv, a$rowname)
+  name <- names(var[-1])
+  # create regression formula
+  fm <-   as.formula(paste(dv, " ~ ", paste(name, collapse = " + ")))
+  
+  
+  
+  # fit model
+  f <- lm(fm, data = var)
+  
+  # print dv name
+  print(dv)
+  
+  # results
+  summary(f)
+  
+  # })
+}
+
+# function for adding interactions to regression iteratively
+# names of comms factors
+interact_female <- function(a) {
+  map(comms_fac, function(i) {
+    if (all(c(i, "prop_female") %in% names(var))) {
+      # standardise IVs
+      var_std <- var %>% 
+      # mutate(prop_female = factor(prop_female)) %>% 
+      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+      print(psych::describe(var_std))
+  
+      fm <- as.formula(paste0("vars$", a, "~", paste0(i, "*prop_female", " + .")))
+      
+      f <- lm(fm, data = var_std)
+      
+      summary(f)
+    }
+  })
+}
+
+
+interact_sex <- function(a) {
+  map(comms_fac, function(i) {
+    if (all(c(i, "sex_driver") %in% names(var))) {
+      # standardise IVs
+      var_std <- var %>% 
+      # mutate(prop_female = factor(prop_female)) %>% 
+      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+      print(psych::describe(var_std))
+  
+      fm <- as.formula(paste0("vars$", a, "~", paste0(i, "*sex_driver", " + .")))
+      
+      f <- lm(fm, data = var_std)
+      
+      summary(f)
+    }
+  })
+}
+
+```
+
+
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(comms_fac, leadership:sit.awareness_driver,
+         driving_years:neuroticism, driving_years_drone:neuroticism_drone, age_co_driver:prop_female,
+         -contains("ratio"),
+         collisions_overall, speed_overall, distance_overall_deviation) %>% 
+  correlate() %>% focus(collisions_overall, speed_overall, distance_overall_deviation) %>% 
+  gather(var, val, -rowname) %>% 
+  mutate(val = round(val, 2)) %>% 
+  spread(var, val)
+```
+
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x[x > -.270 & x < .270] <- NA
+
+name <- names(x)[-1]
+```
+
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+lapply(name, function(i) {
+  x <- x %>% select(rowname, i) %>% na.omit()
+  kable(x)
+})
+```
+
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+
+var <- select_vars(2)
+regress("collisions_overall")
+  
+```
+
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+interact_female("collisions_overall")
+```

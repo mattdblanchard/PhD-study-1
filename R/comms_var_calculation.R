@@ -422,18 +422,18 @@ d <- d %>% left_join(x, by = "team")
 # join comms vars with main dataset
 coding <- coding %>% left_join(d, by = "team")
 
-
 # match comms coding to laps and calculate trends for each driver for each variable
-source("R/matt_scripts/comm_coding/comm_trends.R")
+source("R/comm_trends.R")
 
-vars <- coding %>% left_join(comms, by = "team") 
+vars <- coding %>% left_join(comms, by = "team")
 
 # match comms coding to fog event overall and per lap
-source("R/matt_scripts/comm_coding/fog_comms.R")
+source("R/fog_comms.R")
 
 vars <- vars %>% left_join(fog_vars, by = "team")
 
-# calculate collisions and speed for no fog
+# calculate collisions, speed, and distance for no fog
+# collisions
 col_no_fog <- vars %>% 
   select(team, collisions_animal_1:collisions_animal_5, collisions_block_1:collisions_block_5,
          collisions_fall_1:collisions_fall_5, collisions_ice_1:collisions_ice_5,
@@ -451,7 +451,7 @@ col_no_fog <- vars %>%
   mutate(collisions_no_fog_overall = sum(collisions_no_fog_1, collisions_no_fog_2, collisions_no_fog_3,
                                          collisions_no_fog_4, collisions_no_fog_5))
 
-
+# speed
 speed_no_fog <- vars %>% 
   select(team, speed_animal_1:speed_animal_5, speed_block_1:speed_block_5,
          speed_fall_1:speed_fall_5, speed_ice_1:speed_ice_5,
@@ -469,7 +469,25 @@ speed_no_fog <- vars %>%
   mutate(speed_no_fog_overall = (speed_no_fog_1 + speed_no_fog_2 + speed_no_fog_3 +
                                    speed_no_fog_4 + speed_no_fog_5)/5)
 
-datalist <- list(vars, col_no_fog, speed_no_fog)
+# distance
+dist_no_fog <- vars %>% 
+  select(team, distance_animal_1:distance_animal_5, distance_block_1:distance_block_5,
+         distance_fall_1:distance_fall_5, distance_ice_1:distance_ice_5,
+         distance_none_1:distance_none_5) %>% 
+  gather(var, val, -team) %>% 
+  mutate(lap = str_extract(var, "_[1-5]"),
+         lap = as.numeric(str_remove(lap, "_")),
+         var = str_remove(var, "_[1-5]")) %>% 
+  group_by(team, lap) %>% 
+  summarise(distance_no_fog = sum(val, na.rm = T)) %>% 
+  gather(var, val, distance_no_fog) %>% 
+  unite(var, var, lap) %>% 
+  spread(var, val) %>% 
+  group_by(team) %>%
+  mutate(distance_no_fog_overall = sum(distance_no_fog_1, distance_no_fog_2, distance_no_fog_3,
+                                         distance_no_fog_4, distance_no_fog_5))
+
+datalist <- list(vars, col_no_fog, speed_no_fog, dist_no_fog)
 
 vars <- datalist %>% reduce(left_join, by = "team")
 
@@ -489,23 +507,23 @@ demo <- read_csv("data/demographics.csv") %>%
 
 vars <- vars %>% left_join(demo, by = "team")
 
-# last saved 21 Feb 2020
-vars %>% write_csv("data/200221_comms_vars.csv")
+# last saved 27 Feb 2020
+vars %>% write_csv("data/200227_comms_vars.csv")
 
 # save data for SK's SPSS efa script
-data <- vars
-
-data[is.na(data)] <- 99999
-table(is.na(data))
-table(data == 99999)
-
-data %>% write_csv("data/comms_data_4_SK_efa.csv")
+# data <- vars
+# 
+# data[is.na(data)] <- 99999
+# table(is.na(data))
+# table(data == 99999)
+# 
+# data %>% write_csv("data/comms_data_4_SK_efa.csv")
 
 
 
 
 # Need to conduct EFA in SPSS before running final part of script ---------
-d <- read_csv("data/200221_comms_vars.csv")
+d <- read_csv("data/200227_comms_vars.csv")
 
 # add efa factors to data
 # read factor scores for comms vars
@@ -515,6 +533,6 @@ efa <- read_csv("data/200221_comms_efa_spss_n54.csv") %>%
 # add comms factors to dataset
 d <- d %>% left_join(efa, by = "team")
 
-# last saved 21 Feb 2020
-d %>% write_csv("data/200221_comms_efa_vars.csv")
+# last saved 27 Feb 2020
+d %>% write_csv("data/200227_comms_efa_vars.csv")
 

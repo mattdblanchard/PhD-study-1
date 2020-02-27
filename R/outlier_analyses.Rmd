@@ -16,7 +16,7 @@ library(olsrr)
 library(GGally)
 library(car)
 
-vars <- read_csv(here("data/200221_comms_efa_vars.csv")) %>% 
+vars <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
     filter(!team %in% c("17080712_1", "17080810_1", "17081510_2"))
   # identified a number of outlier teams had major driver-drone networking issues
 

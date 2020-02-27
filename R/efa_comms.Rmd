@@ -1,0 +1,151 @@
+---
+title: "EFA"
+author: "Matt Blanchard"
+date: "13/02/2020"
+output: html_document
+---
+Used https://quantdev.ssri.psu.edu/tutorials/intro-basic-exploratory-factor-analysis as a guide to conduct EFA using R.
+
+```{r setup, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {r load, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(corrr)
+library(broom)
+library(lattice)
+library(nFactors) # Determine Number of Factors to Extract
+library(GPArotation)
+library(corrplot)
+
+# read in the data
+d <- read_csv(here("data/200207_comms_vars.csv")) %>% 
+  filter(team != "17080712_1") %>% 
+  dplyr::select(co_info_help_overall:drive_frust_overall, 
+                -contains("ratio"), -co_total_help_overall, 
+                -co_total_harm_overall, -co_total_overall)
+```
+
+# Descriptive statistics
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# d_std <- data.frame(scale(d, center=TRUE, scale=TRUE))
+#descriptives
+describe(d)
+
+pairs.panels(d)
+```
+
+# Visualise correlations to see if variables cluster
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+corrplot(cor(d_std, use="complete.obs"), order = "hclust", tl.col='black', tl.cex=.75)
+```
+
+It looks like there are 3 clusters of positively correlated variables. 
+1 Inform - Question + help/informs
+2 Instruction
+3 Negative
+
+
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# create the correlation matrix for EFA so we know how it was done (e.g., how missing values were treated)
+cor_d_std <- cor(d_std, use="pairwise.complete.obs")
+cor_d_std
+```
+
+# How many factors to extract?
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+#parallel analysis for number of factors 
+# fa.parallel(x = cor_d_std, fm = "ml", fa = "fa", n.obs = 55)
+
+#multiple methods for number of factors
+nScree(cor_d_std, model = "factors")
+plot(nScree(cor_d_std, model = "factors"))
+
+eigen(cor(cor_d_std))$values
+```
+
+Based on the scree plot it looks like there 3 factors.
+
+# 3-factor EFA
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# # prefer to run using correlation matrix but doesn't provide GFI
+# efa_3factor <- fa(r = cor_d_std, nfactors = 3, 
+#                        rotate = "varimax", 
+#                        fm = "ml")
+
+efa_3factor <- fa(r = d_std, nfactors = 3, 
+                       rotate = "promax", 
+                       fm = "paf",
+                       scores="regression")
+
+
+
+efa_3factor
+```
+
+
+
+# Predicted scores for 3 factors
+Let's take a look at the reduced data
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+head(efa_3factor$scores, 10)
+
+pairs.panels(efa_3factor$scores)
+```
+
+The 4 factors are not correlated with each other. Remember the variance accounted for by the 4 factors is only part of the total variance. Specifically, they account for `r round(100*efa_3factor$Vaccounted[3,4], 2)`% of the variance in the original 9 variables.
+
+
+
+<!-- # CFA -->
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- library(lavaan) -->
+
+<!-- # 3-factor model -->
+<!-- instruct =~ co_instruct_help_overall + co_instruct_harm_overall + co_question_overall + drive_informs_overall -->
+<!-- drive_info =~ co_info_help_overall + drive_question_overall -->
+<!-- negative =~ co_info_harm_overall + co_redundant_overall + drive_frust_overall -->
+
+<!-- # enter the model syntax -->
+<!-- comms.model <- 'instruct =~ co_instruct_help_overall + co_instruct_harm_overall + co_question_overall + drive_informs_overall -->
+<!-- drive_info =~ co_info_help_overall + drive_question_overall -->
+<!-- negative =~ co_info_harm_overall + co_redundant_overall + drive_frust_overall' -->
+
+<!-- # fit the model -->
+<!-- fit_one <- cfa(comms.model, data=d_std, missing = "ML") -->
+
+<!-- # display summary output -->
+<!-- summary(fit_one, fit.measures=TRUE) -->
+
+<!-- fitMeasures(fit_one, fit.measures= c("chisq", "df", "pvalue", "gfi", "tli",  -->
+<!--                                  "cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper", "aic")) -->
+
+
+<!-- # 4-factor model -->
+<!-- driver_info =~ co_info_help_overall + drive_question_overall + drive_informs_overall -->
+<!-- instruct =~ co_instruct_help_overall + co_instruct_harm_overall -->
+<!-- negative =~ co_info_harm_overall + co_instruct_harm_overall + co_redundant_overall + drive_frust_overall -->
+<!-- co_info =~ co_question_overall + drive_informs_overall + co_instruct_harm_overall -->
+
+
+<!-- # enter the model syntax -->
+<!-- comms.model <- 'driver_info =~ co_info_help_overall + drive_question_overall -->
+<!--                 instruct =~ co_instruct_help_overall + co_instruct_harm_overall -->
+<!--                 negative =~ co_info_harm_overall + co_redundant_overall + drive_frust_overall -->
+<!--                 co_info =~ co_question_overall + drive_informs_overall' -->
+
+<!-- # fit the model -->
+<!-- fit_one <- cfa(comms.model, data=d_std, missing = "ML") -->
+
+<!-- # display summary output -->
+<!-- summary(fit_one, fit.measures=TRUE) -->
+
+<!-- fitMeasures(fit_one, fit.measures= c("chisq", "df", "pvalue", "gfi", "tli",  -->
+<!--                                  "cfi", "rmsea", "rmsea.ci.lower", "rmsea.ci.upper", "aic")) -->
+
+<!-- # look at the correlation between the residuals -->
+<!-- residuals(fit_one, type = "cor") -->
+
+<!-- ``` -->

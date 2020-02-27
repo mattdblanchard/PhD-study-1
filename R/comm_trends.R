@@ -1,16 +1,15 @@
 library(broom)
 library(tidyverse)
 
-source("R/matt_scripts/comm_coding/start_time.R")
+source("R/start_time.R")
 
 # vars <- read_csv("data/191210_comms_vars.csv")
 # filter(issue == FALSE) # remove teams with networking issue
 
-d <- read_csv("data/191210_comms_raw.csv")
-# filter(team %in% vars$team) # remove teams with networking issue
+# d <- read_csv("data/200221_comms_raw.csv")
 
 # combine lap start times with comms coding
-d <- d %>% 
+d <- data %>% 
   left_join(start, "Participant") %>% 
   group_by(team) %>% 
   mutate(time = time - start_time)
