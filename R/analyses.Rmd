@@ -1,0 +1,84 @@
+---
+title: "analyses"
+author: "Matt Blanchard"
+date: "28/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {r load, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(corrr)
+library(here)
+library(knitr)
+
+# read sim variables
+vars <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
+      filter(!team %in% c("17080712_1", "17080810_1"))  # remove outliers: collisions("17080810_1"), distance("17081510_2")
+
+# read raw comms data
+raw <- read_csv(here("data/200221_comms_raw.csv")) %>% 
+  filter(team %in% vars$team) # remove outlier teams
+
+# select which communication variables to analyse
+comms_fac <- names(vars %>% select(inconsistent_codriver, terrible_codriver, helpful_exchange))
+```
+
+
+# Descriptives statistics
+## Overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(team, driving_years:neuroticism_drone) %>% 
+  gather(var, val, -team) %>% 
+  mutate(var = str_remove(var, "_drone")) %>% 
+  group_by(var) %>% 
+  summarise(mean = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T))
+
+kable(x)
+
+# reliability for each psych variable
+name <- names(vars %>% select(driving_years:neuroticism))
+
+lapply(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(uid, driving_years:neuroticism_drone) %>% 
+    gather(var, val, -uid) %>% 
+    mutate(var = str_remove(var, "_drone")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+```
+
+## Driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(team, driving_years:neuroticism) %>% 
+  gather(var, val, -team) %>% 
+  group_by(var) %>% 
+  summarise(mean = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T))
+
+kable(x)
+```
+
+## Drone
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(team, driving_years_drone:neuroticism_drone) %>% 
+  gather(var, val, -team) %>% 
+  mutate(var = str_remove(var, "_drone")) %>% 
+  group_by(var) %>% 
+  summarise(mean = mean(val, na.rm = T),
+            sd = sd(val, na.rm = T))
+
+kable(x)
+```

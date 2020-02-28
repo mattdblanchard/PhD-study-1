@@ -18,23 +18,11 @@ library(corrr)
 library(here)
 library(knitr)
 
+# read sim variables
 vars <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
       filter(!team %in% c("17080712_1", "17080810_1"))  # remove outliers: collisions("17080810_1"), distance("17081510_2")
-# identified a number of outlier teams had major driver-drone networking issues
-  # mutate(issue = ifelse(team %in% c("17031609_1", "17080810_1", "17081512_2"), TRUE, issue),
-  #        issue_note = ifelse(team %in% c("17031609_1"), "major driver-drone networking error - codriver could not read arrows and saw roughly 10% of the driver's traffic", issue_note),
-  #        issue_note = ifelse(team %in% c("17080810_1"), "major driver-drone networking error - codriver saw no-go signs in place of all arrows and saw roughly 40% of the driver's traffic", issue_note),
-  #        issue_note = ifelse(team %in% c("17081512_2"), "major driver-drone networking error - codriver saw no-go signs in place of all arrows and saw roughly 10% of the driver's traffic", issue_note)) %>% 
 
-# check 17081510_2 according to session notes: "Gunner2 and 1 had poor connection. I think Gunner2 skipped all events in lap 1 by going the wrong way."
-
-# # read factor scores for comms vars
-# efa <- read_csv(here("data/200220_comms_efa_spss_n55.csv")) %>% 
-#   select(team, inconsistent_codriver, terrible_codriver, helpful_exchange)
-# 
-# # add comms factors to dataset
-# vars <- vars %>% left_join(efa, by = "team")
-
+# read raw comms data
 raw <- read_csv(here("data/200221_comms_raw.csv")) %>% 
   filter(team %in% vars$team) # remove outlier teams
 
@@ -520,8 +508,8 @@ x[x < .270 & x > -.270] <- "-"
 kable(x)
 ```
 
-# Relationship between communication variables and sim performance
-## Descriptives for sim performance measures
+# Relationship between communication variables and simulation-derived metrics
+## Descriptives for simulation-derived metrics
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 x <- vars %>%
   ungroup() %>% 
@@ -552,16 +540,17 @@ x <- vars %>%
 kable(x)
 ```
 
-## Reliability estimates for sim performance measures
+## Reliability estimates for simulation-derived metrics
+## Overall
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
-# reliability for each sim performance variable
-name <- c("collisions", "distance_deviation", "speed")
+# reliability for each simulation-derived metrics
+name <- c("collisions", "distance", "speed")
 
 lapply(name, function(i) {
   x <- vars %>%
     ungroup() %>% 
     select(team, collisions_1:collisions_5, speed_1:speed_5, 
-           distance_1_deviation:distance_5_deviation) %>% 
+           distance_1:distance_5) %>% 
     gather(var, val, -team) %>% 
     mutate(lap = str_extract(var, "_[1-5]"),
            lap = as.numeric(str_remove(lap, "_")),
@@ -574,6 +563,92 @@ lapply(name, function(i) {
 })
 
 ```
+
+## Fog free periods
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# reliability for each simulation-derived metrics
+name <- c("collisions_no_fog", "speed_no_fog", "distance_no_fog")
+
+lapply(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, collisions_no_fog_1:collisions_no_fog_5, speed_no_fog_1:speed_no_fog_5, 
+           distance_no_fog_1:distance_no_fog_5) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+
+```
+
+## Fog-event probe
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# reliability for each simulation-derived metrics
+name <- c("collisions_fog", "speed_fog", "distance_fog")
+
+lapply(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, collisions_fog_1:collisions_fog_5, speed_fog_1:speed_fog_5, 
+           distance_fog_1:distance_fog_5) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+
+```
+
+## Distributions for simulation-derived metrics
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+library(cowplot)
+
+# collisions plot
+c <- vars %>% 
+  ggplot(aes(x=collisions_overall)) +
+  geom_histogram(colour = "black", fill = "white", binwidth = 40) +
+  labs(x = "Collisions", y = "Frequency") +
+  scale_x_continuous(breaks = seq(0,650, 200), limits = c(1,650)) +
+  scale_y_continuous(breaks=seq(0,14,2), limits = c(0,14)) +
+  theme(panel.background = element_blank())
+
+# speed plot
+s <- vars %>% 
+  ggplot(aes(x = speed_overall)) +
+  geom_histogram(colour = "black", fill = "white", binwidth = .5) +
+  labs(x = "Speed", y = "") +
+  scale_x_continuous(breaks = seq(4,12,2), limits = c(4,12)) +
+  scale_y_continuous(breaks=seq(0,9,2), limits = c(0,9)) +
+  theme(panel.background = element_blank())
+
+# distance deviation plot
+d <- vars %>% 
+  ggplot(aes(x = distance_overall_deviation)) +
+  geom_histogram(colour = "black", fill = "white", binwidth = 400) +
+  labs(x = "Distance deviation", y = "Frequency") +
+  scale_x_continuous(breaks = seq(-2000,6000,2000), limits = c(-2000,6000)) +
+  scale_y_continuous(breaks=seq(0,14,2), limits = c(0,14)) +
+  theme(panel.background = element_blank())
+
+# combine plots into single figure
+plot_grid(c, s, d, labels = c("A", "B", "C"))
+
+# save as lossless png file
+# ggsave("output/sim_metric_distributions.png")
+```
+
+
 
 ## Collisions overall
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
@@ -769,7 +844,7 @@ kable(x)
 ```
 
 # Regression 
-## Sig. correaltions between performance metrics and comms and psych variables overall
+## Sig. correaltions between simulation-derived metrics and comms and psych variables overall
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 x <- vars %>% 
   select(comms_fac, leadership:sit.awareness_driver,
@@ -808,7 +883,7 @@ select_vars <- function(dv_index) {
   vars %>% select(a$rowname)
 }
 
-# function to select IVs, fit regression model, and run diagnostics for overall sim performance vars
+# function to select IVs, fit regression model, and run diagnostics for overall simulation-derived metrics
 regress <- function(dv) {
   # print dv name
   print(paste0("DV = ", dv))
@@ -855,7 +930,7 @@ regress <- function(dv) {
 
 
 
-# function to select IVs, fit regression model, and run diagnostics for event sim performance vars (no fog/fog)
+# function to select IVs, fit regression model, and run diagnostics for event simulation-derived metrics (no fog/fog)
 fog_regress <- function(dv) {
   # select variables
   a <- na.omit(x %>% select(rowname, dv)) %>% 
