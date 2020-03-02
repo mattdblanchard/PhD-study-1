@@ -1,60 +1,3 @@
----
-title: "analyses"
-author: "Matt Blanchard"
-date: "28/02/2020"
-output: html_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-``` {r load, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
-library(tidyverse)
-library(corrr)
-library(here)
-library(knitr)
-
-# read sim variables
-vars <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
-      filter(!team %in% c("17080712_1", "17080810_1"))  # remove outliers: collisions("17080810_1"), distance("17081510_2")
-
-# read raw comms data
-raw <- read_csv(here("data/200221_comms_raw.csv")) %>% 
-  filter(team %in% vars$team) # remove outlier teams
-
-# select which communication variables to analyse
-comms_fac <- names(vars %>% select(inconsistent_codriver, terrible_codriver, helpful_exchange))
-```
-
-
-# Descriptives statistics
-## Overall
-``` {r echo=FALSE, message=FALSE, warning=FALSE}
-x <- vars %>% 
-  select(team, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
-  gather(var, val, -team) %>% 
-  mutate(var = str_remove(var, "_drone")) %>% 
-  group_by(var) %>% 
-  summarise(mean = mean(val, na.rm = T),
-            sd = sd(val, na.rm = T),
-            min = min(val, na.rm = T),
-            max = max(val, na.rm = T))
-
-kable(x)
-
-# distribution plots
-vars %>% 
-  select(team, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
-  gather(var, val, -team) %>% 
-  mutate(var = str_remove(var, "_drone")) %>% 
-  ggplot(aes(val)) +
-  geom_histogram() +
-  facet_wrap(~var, scales = "free")
-```
-
-## Reliability estimates for each psychometric measure
-``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # read survey data
 surveys <- readRDS(here("data/survey_items.rds")) %>% 
   map(filter, uid %in% vars$uid)
@@ -160,6 +103,31 @@ cor <- cor.test(odd$discrim, even$discrim)
 # Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
 print(paste0("RAPM discrimination = ", round((2*cor$estimate) / (1+cor$estimate),2)))
 
+
+# function to calculate reliability for the RT cost variable
+spear_adjust <- function(data, type1, type2) {
+  odd <- data %>%
+    filter(itemnum %in% odds) %>% 
+    group_by(uid) %>% 
+    summarise(cost1 = mean(Stimulus_RT[type==type1] - mean(Stimulus_RT[type==type2])))
+  
+  even <- data %>%
+    filter(itemnum %in% evens) %>% 
+    group_by(uid) %>% 
+    summarise(cost2 = mean(Stimulus_RT[type==type1] - mean(Stimulus_RT[type==type2])))
+  
+  x <- odd %>% 
+    left_join(even, by = "uid") %>% 
+    ungroup(uid) %>%
+    select(-uid)
+  
+  cor <- cor.test(x$cost1, x$cost2)
+  
+  # Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+  (2*cor$estimate) / (1+cor$estimate)
+}
+
+
 # task switching ----------------------------------------------------------
 # uneven number of repeat and switch trials for each participant so selected 
 # a complete subset to calculate reliability: the largest number of trials 
@@ -246,6 +214,7 @@ odds <- seq(1,24,2)
 evens <- seq(2,24,2)
 
 # calculate reliability
+spear_adjust(x, "switch", "repeat")
 odd <- x %>%
   filter(itemnum %in% odds) %>% 
   group_by(uid) %>% 
@@ -259,7 +228,7 @@ even <- x %>%
 cor <- cor.test(odd$cost1, even$cost2)
 
 # Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
-print(paste0("switch cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+print(paste0("inhibitory cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
 
 
 # running letters ---------------------------------------------------------
@@ -362,31 +331,4 @@ x <- datalist %>% reduce(left_join, by = "uid") %>%
 cor <- cor.test(x$cost1, x$cost2)
 
 # Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
-print(paste0("inhibitory cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
-
-```
-
-## Driver
-``` {r echo=FALSE, message=FALSE, warning=FALSE}
-x <- vars %>% 
-  select(team, driving_years:neuroticism) %>% 
-  gather(var, val, -team) %>% 
-  group_by(var) %>% 
-  summarise(mean = mean(val, na.rm = T),
-            sd = sd(val, na.rm = T))
-
-kable(x)
-```
-
-## Drone
-``` {r echo=FALSE, message=FALSE, warning=FALSE}
-x <- vars %>% 
-  select(team, driving_years_drone:neuroticism_drone) %>% 
-  gather(var, val, -team) %>% 
-  mutate(var = str_remove(var, "_drone")) %>% 
-  group_by(var) %>% 
-  summarise(mean = mean(val, na.rm = T),
-            sd = sd(val, na.rm = T))
-
-kable(x)
-```
+print(paste0("switch cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
