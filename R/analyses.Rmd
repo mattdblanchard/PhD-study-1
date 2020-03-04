@@ -14,9 +14,15 @@ library(tidyverse)
 library(corrr)
 library(here)
 library(knitr)
+library(corrplot)
+library(psych)
+library(car) # load package to diagnose multicollinearity
+library(GGally)
+library(olsrr) # print semi-part correlations
+library(mctest)
 
 # read sim variables
-vars <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
+vars <- read_csv(here("data/200303_comms_efa_vars.csv")) %>% 
       filter(!team %in% c("17080712_1", "17080810_1"))  # remove outliers: collisions("17080810_1"), distance("17081510_2")
 
 # read raw comms data
@@ -25,42 +31,244 @@ raw <- read_csv(here("data/200221_comms_raw.csv")) %>%
 
 # select which communication variables to analyse
 comms_fac <- names(vars %>% select(inconsistent_codriver, terrible_codriver, helpful_exchange))
+
+# select which sim-metrics to analyse
+sim_metrics <- names(vars %>% select(collisions_overall, speed_overall, distance_overall))
+
 ```
 
 
-# Descriptives statistics
+# Descriptives statistics, distributions, correlations, and reliability estimates
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# utility functions
+# function for descriptives
+descriptives <- function(data) {
+  x <- data %>% 
+    gather(var, val) %>% 
+    group_by(var) %>% 
+    summarise(mean = round(mean(val, na.rm = T),2),
+              sd = round(sd(val, na.rm = T),2),
+              min = round(min(val, na.rm = T),2),
+              max = round(max(val, na.rm = T),2))
+  
+}
+
+# function for distributions
+distributions <- function(data) {
+  data %>%  
+    gather(var, val) %>% 
+    ggplot(aes(x = val)) +
+    geom_histogram() +
+    facet_wrap(~var, scales = "free") +
+    theme_minimal()
+}
+
+# function for correlation matrices with sig. stars
+source(here("R/corr_matrix_sig.R"))
+
+```
+
+## Driving simulation metrics
 ## Overall
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# Overall
+# select variables
 x <- vars %>% 
+  select(sim_metrics, distance_overall_deviation)
+
+# descriptives
+descriptives(x)
+
+# distributions
+distributions(x)
+
+# correlations
+kable(star_matrix(x))
+
+# reliability estimates
+name <- c("collisions", "speed", "distance", "distance_deviation")
+
+map(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, collisions_1:collisions_5, speed_1:speed_5, 
+           distance_1:distance_5,
+           distance_1_deviation:distance_5_deviation) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+
+```
+
+## Fog-free periods
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# No fog
+# select variables
+x <- vars %>% 
+  select(collisions_no_fog_overall, speed_no_fog_overall, distance_no_fog_overall)
+
+# descriptives
+descriptives(x)
+
+# distributions
+distributions(x)
+
+# correlations
+kable(star_matrix(x))
+
+# reliability estimates
+name <- c("collisions_no_fog", "speed_no_fog", "distance_no_fog")
+
+map(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, collisions_no_fog_1:collisions_no_fog_5, speed_no_fog_1:speed_no_fog_5, 
+           distance_no_fog_1:distance_no_fog_5) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+
+```
+
+## Fog event probe
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# Fog event
+# select variables
+x <- vars %>% 
+  select(collisions_fog_overall, speed_fog_overall, distance_fog_overall)
+
+# descriptives
+descriptives(x)
+
+# distributions
+distributions(x)
+
+# correlations
+kable(star_matrix(x))
+
+# reliability estimates
+name <- c("collisions_fog", "speed_fog", "distance_fog")
+
+map(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, collisions_fog_1:collisions_fog_5, speed_fog_1:speed_fog_5, 
+           distance_fog_1:distance_fog_5) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+
+```
+
+## Psychometric measures
+## Overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# descriptives
+# overall
+o <- vars %>% 
   select(team, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
   gather(var, val, -team) %>% 
-  mutate(var = str_remove(var, "_drone")) %>% 
+  mutate(var = str_remove(var, "_drone"))
+
+tmp1 <- o %>% 
   group_by(var) %>% 
-  summarise(mean = mean(val, na.rm = T),
-            sd = sd(val, na.rm = T),
-            min = min(val, na.rm = T),
-            max = max(val, na.rm = T))
+  summarise(mean_overall = mean(val, na.rm = T),
+            sd_overall = sd(val, na.rm = T)
+            # min_overall = min(val, na.rm = T),
+            # max_overall = max(val, na.rm = T)
+            )
 
-kable(x)
+# driver
+x <- vars %>% 
+  select(driving_years:neuroticism)
 
-# distribution plots
-vars %>% 
-  select(team, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
-  gather(var, val, -team) %>% 
-  mutate(var = str_remove(var, "_drone")) %>% 
+tmp2 <- descriptives(x) %>% 
+  select(-var, -min, -max) %>% 
+  rename(mean_driver = mean, sd_driver = sd 
+         # min_driver = min, max_driver = max
+         )
+
+# codriver
+x <- vars %>% 
+  select(driving_years_drone:neuroticism_drone)
+
+tmp3 <- descriptives(x) %>% 
+  select(-var, -min, -max) %>% 
+  rename(mean_co = mean, sd_co = sd
+         #min_co = min, max_co = max
+         )
+
+# print together in single table
+kable(bind_cols(tmp1, tmp2, tmp3))
+
+# overall distribution plots
+o %>% 
   ggplot(aes(val)) +
   geom_histogram() +
   facet_wrap(~var, scales = "free")
-```
 
-## Reliability estimates for each psychometric measure
+# overall correlations
+x <- vars %>% 
+  select(uid, driving_years_drone:neuroticism_drone) %>% 
+  gather(var, val, -uid) %>% 
+  mutate(var = str_remove(var, "_drone")) %>% 
+  spread(var, val) %>% 
+  rbind(vars %>% 
+  select(uid, driving_years:neuroticism)) %>% 
+  select(-uid) %>% 
+  star_matrix()
+
+kable(x)
+
+```
+### Reliability overall
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# Reliability estimates for each psychometric measure overall
 # read survey data
-surveys <- readRDS(here("data/survey_items.rds")) %>% 
-  map(filter, uid %in% vars$uid)
+surveys <- readRDS(here("data/survey_items.rds")) 
+
+all_id <- surveys$Demographics %>% 
+  select(uid) %>% 
+  mutate(team = str_replace(uid, "-.*", "")) %>% 
+  filter(team %in% vars$team) %>% 
+  select(-team)
+
+# driver ids
+drive_id <- vars %>% select(uid) %>% unique()
+
+# codriver ids
+co_id <- surveys$Demographics %>% 
+  select(uid) %>% 
+  mutate(team = str_replace(uid, "-.*", "")) %>% 
+  filter(team %in% vars$team) %>% 
+  filter(!uid %in% drive_id$uid) %>% 
+  select(-team)
+
+survey <- map(surveys, filter, uid %in% all_id$uid)
 
 # Connor_Davidson_Resilience
-x <- surveys$Connor_Davidson_Resilience %>% 
+x <- survey$Connor_Davidson_Resilience %>% 
   select(uid, item_num, response) %>% 
   spread(item_num, response) %>% 
   select(-uid)
@@ -68,10 +276,10 @@ x <- surveys$Connor_Davidson_Resilience %>%
 print(paste0("resilience = ", round(psych::alpha(x)$total$raw_alpha,2)))
 
 # mini-IPIP
-fac <- unique(surveys$Mini_IPIP$facet)
+fac <- unique(survey$Mini_IPIP$facet)
 
 map(fac, function(i) {
-  x <- surveys$Mini_IPIP %>% 
+  x <- survey$Mini_IPIP %>% 
     mutate(response = ifelse(key == "-1", 6-response, response)) %>% 
     filter(facet == i) %>% 
     select(uid, item_num, response) %>%
@@ -83,7 +291,7 @@ map(fac, function(i) {
 
 # RAPM
 # accuracy
-x <- surveys$Ravens_Advanced_Progressive_Matrices %>% 
+x <- survey$Ravens_Advanced_Progressive_Matrices %>% 
   select(uid, ApmItemNum, Stimulus_ACC) %>% 
   mutate(Stimulus_ACC = as.numeric(Stimulus_ACC)) %>% 
   spread(ApmItemNum, Stimulus_ACC) %>% 
@@ -92,7 +300,7 @@ x <- surveys$Ravens_Advanced_Progressive_Matrices %>%
 print(paste0("RAPM accuracy = ", round(psych::alpha(x)$total$raw_alpha,2)))
 
 # confidence
-x <- surveys$Ravens_Advanced_Progressive_Matrices %>% 
+x <- survey$Ravens_Advanced_Progressive_Matrices %>% 
   select(uid, ApmItemNum, Confidence_RESP) %>% 
   spread(ApmItemNum, Confidence_RESP) %>% 
   select(-uid)
@@ -102,19 +310,19 @@ print(paste0("RAPM confidence = ", round(psych::alpha(x)$total$raw_alpha,2)))
 # bias
 # calculate bias for the odd and even items separately
 # correlate the two sets then ajust with the Spearman-Brown prophecy formula
-items <- surveys$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
+items <- survey$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
 
 odd <- items[c(seq(1, 20, 2)),]
 even <- items[c(seq(2, 20, 2)),]
 
-odd <- surveys$Ravens_Advanced_Progressive_Matrices %>% 
+odd <- survey$Ravens_Advanced_Progressive_Matrices %>% 
   filter(ApmItemNum %in% odd$ApmItemNum) %>% 
   group_by(uid) %>% 
   summarise(acc = 100 * mean(Stimulus_ACC),
             conf = mean(Confidence_RESP),
             bias = conf - acc)
 
-even <- surveys$Ravens_Advanced_Progressive_Matrices %>% 
+even <- survey$Ravens_Advanced_Progressive_Matrices %>% 
   filter(ApmItemNum %in% even$ApmItemNum) %>% 
   group_by(uid) %>% 
   summarise(acc = 100 * mean(Stimulus_ACC),
@@ -130,12 +338,12 @@ print(paste0("RAPM bias = ", round((2*cor$estimate) / (1+cor$estimate),2)))
 # discrimination
 # calculate for the odd and even items separately
 # correlate the two sets then ajust with the Spearman-Brown prophecy formula
-items <- surveys$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
+items <- survey$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
 
 odd <- items[c(seq(1, 20, 2)),]
 even <- items[c(seq(2, 20, 2)),]
 
-odd <- surveys$Ravens_Advanced_Progressive_Matrices %>% 
+odd <- survey$Ravens_Advanced_Progressive_Matrices %>% 
   filter(ApmItemNum %in% odd$ApmItemNum) %>% 
   group_by(uid, Stimulus_ACC) %>% 
   summarise(conf = mean(Confidence_RESP, na.rm = T)) %>% 
@@ -145,7 +353,7 @@ odd <- surveys$Ravens_Advanced_Progressive_Matrices %>%
   group_by(uid) %>% 
   summarise(discrim = conf_TRUE - conf_FALSE)
 
-even <- surveys$Ravens_Advanced_Progressive_Matrices %>% 
+even <- survey$Ravens_Advanced_Progressive_Matrices %>% 
   filter(ApmItemNum %in% even$ApmItemNum) %>% 
   group_by(uid, Stimulus_ACC) %>% 
   summarise(conf = mean(Confidence_RESP, na.rm = T)) %>% 
@@ -165,11 +373,11 @@ print(paste0("RAPM discrimination = ", round((2*cor$estimate) / (1+cor$estimate)
 # a complete subset to calculate reliability: the largest number of trials 
 # completed by all participants in each trial type
 
-type <- unique(surveys$Task_Switching$type)
+type <- unique(survey$Task_Switching$type)
 
 # Accuracy
 map(type, function(i) {
-  x <- surveys$Task_Switching %>%
+  x <- survey$Task_Switching %>%
     filter(type == i) %>%
     select(uid, Stimulus_ACC) %>%
     group_by(uid) %>%
@@ -203,7 +411,7 @@ map(type, function(i) {
 
 # time
 map(type, function(i) {
-  x <- surveys$Task_Switching %>%
+  x <- survey$Task_Switching %>%
     filter(type == i) %>%
     select(uid, Stimulus_RT) %>%
     group_by(uid) %>%
@@ -235,7 +443,7 @@ map(type, function(i) {
 
 # inhibitory cost
 # prepare data
-x <- surveys$Task_Switching %>%
+x <- survey$Task_Switching %>%
   select(uid, type, Stimulus_RT) %>%
   group_by(uid, type) %>%
   mutate(itemnum = row_number()) %>% 
@@ -264,7 +472,7 @@ print(paste0("switch cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
 
 # running letters ---------------------------------------------------------
 # Accuracy
-x <- surveys$Running_Letters %>%
+x <- survey$Running_Letters %>%
   select(uid, RUNNINGtest_TrialNr, Stimulus_ACC) %>%
   group_by(uid) %>%
   mutate(Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
@@ -280,11 +488,11 @@ print(paste0("working memory accuracy = ", round(psych::alpha(x)$total$raw_alpha
 # flanker task ------------------------------------------------------------
 # 80 congruent trials (1 person with 79)
 # 20 incongruent trials
-type <- unique(surveys$Flanker$Congruency)
+type <- unique(survey$Flanker$Congruency)
 
 # Accuracy
 map(type, function(i) {
-  x <- surveys$Flanker %>%
+  x <- survey$Flanker %>%
     filter(Congruency == i) %>%
     select(uid, FLANKERtest_TrialNr, Stimulus_ACC) %>%
     group_by(uid) %>% 
@@ -302,7 +510,7 @@ map(type, function(i) {
 
 # time
 map(type, function(i) {
-  x <- surveys$Flanker %>%
+  x <- survey$Flanker %>%
     filter(Congruency == i) %>%
     select(uid, FLANKERtest_TrialNr, Stimulus_RT) %>%
     group_by(uid) %>% 
@@ -318,7 +526,319 @@ map(type, function(i) {
 
 # switch cost
 # prepare data
-x <- surveys$Flanker %>%
+x <- survey$Flanker %>%
+  select(uid, Congruency, Stimulus_RT) %>%
+  group_by(uid, Congruency) %>%
+  mutate(itemnum = row_number())
+
+# select odd and even items
+odd_con <- seq(1,80,2)
+even_con <- seq(2,80,2)
+
+odd_in <- seq(1,20,2)
+even_in <- seq(2,20,2)
+
+# calculate reliability
+con_o <- x %>% 
+  filter(itemnum %in% odd_con) %>% 
+  group_by(uid) %>% 
+  summarise(con1 = mean(Stimulus_RT))
+
+in_o <- x %>% 
+  filter(itemnum %in% odd_in) %>% 
+  group_by(uid) %>% 
+  summarise(in1 = mean(Stimulus_RT))
+
+con_e <- x %>% 
+  filter(itemnum %in% even_con) %>% 
+  group_by(uid) %>% 
+  summarise(con2 = mean(Stimulus_RT))
+
+in_e <- x %>% 
+  filter(itemnum %in% even_in) %>% 
+  group_by(uid) %>% 
+  summarise(in2 = mean(Stimulus_RT))
+
+
+datalist <- list(con_o, in_o, con_e, in_e)
+
+x <- datalist %>% reduce(left_join, by = "uid") %>% 
+  group_by(uid) %>% 
+  summarise(cost1 = con2 - con1,
+            cost2 = in2 - in1)
+
+cor <- cor.test(x$cost1, x$cost2)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("inhibitory cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
+```
+### Reliability for driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# Reliability estimates for each psychometric measure driver
+# filter survey data
+survey <- map(surveys, filter, uid %in% drive_id$uid)
+
+# Connor_Davidson_Resilience
+x <- survey$Connor_Davidson_Resilience %>% 
+  select(uid, item_num, response) %>% 
+  spread(item_num, response) %>% 
+  select(-uid)
+
+print(paste0("resilience = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+# mini-IPIP
+fac <- unique(survey$Mini_IPIP$facet)
+
+map(fac, function(i) {
+  x <- survey$Mini_IPIP %>% 
+    mutate(response = ifelse(key == "-1", 6-response, response)) %>% 
+    filter(facet == i) %>% 
+    select(uid, item_num, response) %>%
+    spread(item_num, response) %>%
+    select(-uid)
+  
+  print(paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+# RAPM
+# accuracy
+x <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  select(uid, ApmItemNum, Stimulus_ACC) %>% 
+  mutate(Stimulus_ACC = as.numeric(Stimulus_ACC)) %>% 
+  spread(ApmItemNum, Stimulus_ACC) %>% 
+  select(-uid)
+
+print(paste0("RAPM accuracy = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+# confidence
+x <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  select(uid, ApmItemNum, Confidence_RESP) %>% 
+  spread(ApmItemNum, Confidence_RESP) %>% 
+  select(-uid)
+
+print(paste0("RAPM confidence = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+# bias
+# calculate bias for the odd and even items separately
+# correlate the two sets then ajust with the Spearman-Brown prophecy formula
+items <- survey$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
+
+odd <- items[c(seq(1, 20, 2)),]
+even <- items[c(seq(2, 20, 2)),]
+
+odd <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% odd$ApmItemNum) %>% 
+  group_by(uid) %>% 
+  summarise(acc = 100 * mean(Stimulus_ACC),
+            conf = mean(Confidence_RESP),
+            bias = conf - acc)
+
+even <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% even$ApmItemNum) %>% 
+  group_by(uid) %>% 
+  summarise(acc = 100 * mean(Stimulus_ACC),
+            conf = mean(Confidence_RESP),
+            bias = conf - acc)
+
+cor <- cor.test(odd$bias, even$bias)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("RAPM bias = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
+
+# discrimination
+# calculate for the odd and even items separately
+# correlate the two sets then ajust with the Spearman-Brown prophecy formula
+items <- survey$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
+
+odd <- items[c(seq(1, 20, 2)),]
+even <- items[c(seq(2, 20, 2)),]
+
+odd <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% odd$ApmItemNum) %>% 
+  group_by(uid, Stimulus_ACC) %>% 
+  summarise(conf = mean(Confidence_RESP, na.rm = T)) %>% 
+  gather(var, val, conf) %>% 
+  unite(var, var, Stimulus_ACC) %>% 
+  spread(var, val) %>% 
+  group_by(uid) %>% 
+  summarise(discrim = conf_TRUE - conf_FALSE)
+
+even <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% even$ApmItemNum) %>% 
+  group_by(uid, Stimulus_ACC) %>% 
+  summarise(conf = mean(Confidence_RESP, na.rm = T)) %>% 
+  gather(var, val, conf) %>% 
+  unite(var, var, Stimulus_ACC) %>% 
+  spread(var, val) %>% 
+  group_by(uid) %>% 
+  summarise(discrim = conf_TRUE - conf_FALSE)
+
+cor <- cor.test(odd$discrim, even$discrim)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("RAPM discrimination = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
+# task switching ----------------------------------------------------------
+# uneven number of repeat and switch trials for each participant so selected 
+# a complete subset to calculate reliability: the largest number of trials 
+# completed by all participants in each trial type
+
+type <- unique(survey$Task_Switching$type)
+
+# Accuracy
+map(type, function(i) {
+  x <- survey$Task_Switching %>%
+    filter(type == i) %>%
+    select(uid, Stimulus_ACC) %>%
+    group_by(uid) %>%
+    mutate(itemnum = row_number())
+  
+  if (i == "repeat") {
+    x <- x %>% 
+      filter(itemnum %in% c(1:26)) %>%
+      select(uid, itemnum, Stimulus_ACC) %>%
+      mutate(Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                                   ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC))) %>%
+      spread(itemnum, Stimulus_ACC) %>%
+      ungroup() %>% 
+      select(-uid)
+  } 
+  
+  if (i == "switch") {
+    x <- x %>% 
+      filter(itemnum %in% c(1:24)) %>% 
+      select(uid, itemnum, Stimulus_ACC) %>%
+      mutate(Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                                   ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC))) %>%
+      spread(itemnum, Stimulus_ACC) %>%
+      ungroup() %>% 
+      select(-uid)
+  }
+  
+  print(paste0(i, " errors = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+
+# time
+map(type, function(i) {
+  x <- survey$Task_Switching %>%
+    filter(type == i) %>%
+    select(uid, Stimulus_RT) %>%
+    group_by(uid) %>%
+    mutate(itemnum = row_number())
+  
+  if (i == "repeat") {
+    x <- x %>% 
+      filter(itemnum %in% c(1:26)) %>%
+      select(uid, itemnum, Stimulus_RT) %>%
+      mutate(Stimulus_RT = ifelse(Stimulus_RT == TRUE, 1,
+                                  ifelse(Stimulus_RT == FALSE, 0, Stimulus_RT))) %>%
+      spread(itemnum, Stimulus_RT) %>%
+      ungroup() %>% 
+      select(-uid)
+  } else {
+    x <- x %>% 
+      filter(itemnum %in% c(1:24)) %>% 
+      select(uid, itemnum, Stimulus_RT) %>%
+      mutate(Stimulus_RT = ifelse(Stimulus_RT == TRUE, 1,
+                                  ifelse(Stimulus_RT == FALSE, 0, Stimulus_RT))) %>%
+      spread(itemnum, Stimulus_RT) %>%
+      ungroup() %>% 
+      select(-uid)
+  }
+  
+  print(paste0(i, " time = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+
+# inhibitory cost
+# prepare data
+x <- survey$Task_Switching %>%
+  select(uid, type, Stimulus_RT) %>%
+  group_by(uid, type) %>%
+  mutate(itemnum = row_number()) %>% 
+  filter(itemnum %in% c(1:24))
+
+# select odd and even items
+odds <- seq(1,24,2)
+evens <- seq(2,24,2)
+
+# calculate reliability
+odd <- x %>%
+  filter(itemnum %in% odds) %>% 
+  group_by(uid) %>% 
+  summarise(cost1 = mean(Stimulus_RT[type=="switch"] - mean(Stimulus_RT[type=="repeat"])))
+
+even <- x %>%
+  filter(itemnum %in% evens) %>% 
+  group_by(uid) %>% 
+  summarise(cost2 = mean(Stimulus_RT[type=="switch"] - mean(Stimulus_RT[type=="repeat"])))
+
+cor <- cor.test(odd$cost1, even$cost2)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("switch cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
+
+# running letters ---------------------------------------------------------
+# Accuracy
+x <- survey$Running_Letters %>%
+  select(uid, RUNNINGtest_TrialNr, Stimulus_ACC) %>%
+  group_by(uid) %>%
+  mutate(Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                               ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC))) %>% 
+  spread(RUNNINGtest_TrialNr, Stimulus_ACC) %>%
+  ungroup() %>% 
+  select(-uid)
+
+print(paste0("working memory accuracy = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+
+
+# flanker task ------------------------------------------------------------
+# 80 congruent trials (1 person with 79)
+# 20 incongruent trials
+type <- unique(survey$Flanker$Congruency)
+
+# Accuracy
+map(type, function(i) {
+  x <- survey$Flanker %>%
+    filter(Congruency == i) %>%
+    select(uid, FLANKERtest_TrialNr, Stimulus_ACC) %>%
+    group_by(uid) %>% 
+    mutate(row = 1:n(),
+           Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                                 ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC)),
+           Stimulus_ACC = as.numeric(Stimulus_ACC)) %>% 
+    select(-FLANKERtest_TrialNr) %>% 
+    spread(row, Stimulus_ACC) %>%
+    ungroup() %>% 
+    select(-uid)
+  
+  print(paste0(i, " errors = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+# time
+map(type, function(i) {
+  x <- survey$Flanker %>%
+    filter(Congruency == i) %>%
+    select(uid, FLANKERtest_TrialNr, Stimulus_RT) %>%
+    group_by(uid) %>% 
+    mutate(row = 1:n()) %>% 
+    select(-FLANKERtest_TrialNr) %>% 
+    spread(row, Stimulus_RT) %>%
+    ungroup() %>% 
+    select(-uid)
+  
+  print(paste0(i, " time = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+
+# switch cost
+# prepare data
+x <- survey$Flanker %>%
   select(uid, Congruency, Stimulus_RT) %>%
   group_by(uid, Congruency) %>%
   mutate(itemnum = row_number())
@@ -366,27 +886,808 @@ print(paste0("inhibitory cost = ", round((2*cor$estimate) / (1+cor$estimate),2))
 
 ```
 
-## Driver
+### Reliability for codriver
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
-x <- vars %>% 
-  select(team, driving_years:neuroticism) %>% 
-  gather(var, val, -team) %>% 
-  group_by(var) %>% 
-  summarise(mean = mean(val, na.rm = T),
-            sd = sd(val, na.rm = T))
+# Reliability estimates for each psychometric measure codriver
+# filter survey data
+survey <- map(surveys, filter, uid %in% co_id$uid)
 
-kable(x)
+# Connor_Davidson_Resilience
+x <- survey$Connor_Davidson_Resilience %>% 
+  select(uid, item_num, response) %>% 
+  spread(item_num, response) %>% 
+  select(-uid)
+
+print(paste0("resilience = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+# mini-IPIP
+fac <- unique(survey$Mini_IPIP$facet)
+
+map(fac, function(i) {
+  x <- survey$Mini_IPIP %>% 
+    mutate(response = ifelse(key == "-1", 6-response, response)) %>% 
+    filter(facet == i) %>% 
+    select(uid, item_num, response) %>%
+    spread(item_num, response) %>%
+    select(-uid)
+  
+  print(paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+# RAPM
+# accuracy
+x <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  select(uid, ApmItemNum, Stimulus_ACC) %>% 
+  mutate(Stimulus_ACC = as.numeric(Stimulus_ACC)) %>% 
+  spread(ApmItemNum, Stimulus_ACC) %>% 
+  select(-uid)
+
+print(paste0("RAPM accuracy = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+# confidence
+x <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  select(uid, ApmItemNum, Confidence_RESP) %>% 
+  spread(ApmItemNum, Confidence_RESP) %>% 
+  select(-uid)
+
+print(paste0("RAPM confidence = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+# bias
+# calculate bias for the odd and even items separately
+# correlate the two sets then ajust with the Spearman-Brown prophecy formula
+items <- survey$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
+
+odd <- items[c(seq(1, 20, 2)),]
+even <- items[c(seq(2, 20, 2)),]
+
+odd <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% odd$ApmItemNum) %>% 
+  group_by(uid) %>% 
+  summarise(acc = 100 * mean(Stimulus_ACC),
+            conf = mean(Confidence_RESP),
+            bias = conf - acc)
+
+even <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% even$ApmItemNum) %>% 
+  group_by(uid) %>% 
+  summarise(acc = 100 * mean(Stimulus_ACC),
+            conf = mean(Confidence_RESP),
+            bias = conf - acc)
+
+cor <- cor.test(odd$bias, even$bias)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("RAPM bias = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
+
+# discrimination
+# calculate for the odd and even items separately
+# correlate the two sets then ajust with the Spearman-Brown prophecy formula
+items <- survey$Ravens_Advanced_Progressive_Matrices %>% select(ApmItemNum) %>% unique()
+
+odd <- items[c(seq(1, 20, 2)),]
+even <- items[c(seq(2, 20, 2)),]
+
+odd <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% odd$ApmItemNum) %>% 
+  group_by(uid, Stimulus_ACC) %>% 
+  summarise(conf = mean(Confidence_RESP, na.rm = T)) %>% 
+  gather(var, val, conf) %>% 
+  unite(var, var, Stimulus_ACC) %>% 
+  spread(var, val) %>% 
+  group_by(uid) %>% 
+  summarise(discrim = conf_TRUE - conf_FALSE)
+
+even <- survey$Ravens_Advanced_Progressive_Matrices %>% 
+  filter(ApmItemNum %in% even$ApmItemNum) %>% 
+  group_by(uid, Stimulus_ACC) %>% 
+  summarise(conf = mean(Confidence_RESP, na.rm = T)) %>% 
+  gather(var, val, conf) %>% 
+  unite(var, var, Stimulus_ACC) %>% 
+  spread(var, val) %>% 
+  group_by(uid) %>% 
+  summarise(discrim = conf_TRUE - conf_FALSE)
+
+cor <- cor.test(odd$discrim, even$discrim)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("RAPM discrimination = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
+# task switching ----------------------------------------------------------
+# uneven number of repeat and switch trials for each participant so selected 
+# a complete subset to calculate reliability: the largest number of trials 
+# completed by all participants in each trial type
+
+type <- unique(survey$Task_Switching$type)
+
+# Accuracy
+map(type, function(i) {
+  x <- survey$Task_Switching %>%
+    filter(type == i) %>%
+    select(uid, Stimulus_ACC) %>%
+    group_by(uid) %>%
+    mutate(itemnum = row_number())
+  
+  if (i == "repeat") {
+    x <- x %>% 
+      filter(itemnum %in% c(1:26)) %>%
+      select(uid, itemnum, Stimulus_ACC) %>%
+      mutate(Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                                   ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC))) %>%
+      spread(itemnum, Stimulus_ACC) %>%
+      ungroup() %>% 
+      select(-uid)
+  } 
+  
+  if (i == "switch") {
+    x <- x %>% 
+      filter(itemnum %in% c(1:24)) %>% 
+      select(uid, itemnum, Stimulus_ACC) %>%
+      mutate(Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                                   ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC))) %>%
+      spread(itemnum, Stimulus_ACC) %>%
+      ungroup() %>% 
+      select(-uid)
+  }
+  
+  print(paste0(i, " errors = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+
+# time
+map(type, function(i) {
+  x <- survey$Task_Switching %>%
+    filter(type == i) %>%
+    select(uid, Stimulus_RT) %>%
+    group_by(uid) %>%
+    mutate(itemnum = row_number())
+  
+  if (i == "repeat") {
+    x <- x %>% 
+      filter(itemnum %in% c(1:26)) %>%
+      select(uid, itemnum, Stimulus_RT) %>%
+      mutate(Stimulus_RT = ifelse(Stimulus_RT == TRUE, 1,
+                                  ifelse(Stimulus_RT == FALSE, 0, Stimulus_RT))) %>%
+      spread(itemnum, Stimulus_RT) %>%
+      ungroup() %>% 
+      select(-uid)
+  } else {
+    x <- x %>% 
+      filter(itemnum %in% c(1:24)) %>% 
+      select(uid, itemnum, Stimulus_RT) %>%
+      mutate(Stimulus_RT = ifelse(Stimulus_RT == TRUE, 1,
+                                  ifelse(Stimulus_RT == FALSE, 0, Stimulus_RT))) %>%
+      spread(itemnum, Stimulus_RT) %>%
+      ungroup() %>% 
+      select(-uid)
+  }
+  
+  print(paste0(i, " time = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+
+# inhibitory cost
+# prepare data
+x <- survey$Task_Switching %>%
+  select(uid, type, Stimulus_RT) %>%
+  group_by(uid, type) %>%
+  mutate(itemnum = row_number()) %>% 
+  filter(itemnum %in% c(1:24))
+
+# select odd and even items
+odds <- seq(1,24,2)
+evens <- seq(2,24,2)
+
+# calculate reliability
+odd <- x %>%
+  filter(itemnum %in% odds) %>% 
+  group_by(uid) %>% 
+  summarise(cost1 = mean(Stimulus_RT[type=="switch"] - mean(Stimulus_RT[type=="repeat"])))
+
+even <- x %>%
+  filter(itemnum %in% evens) %>% 
+  group_by(uid) %>% 
+  summarise(cost2 = mean(Stimulus_RT[type=="switch"] - mean(Stimulus_RT[type=="repeat"])))
+
+cor <- cor.test(odd$cost1, even$cost2)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("switch cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
+
+# running letters ---------------------------------------------------------
+# Accuracy
+x <- survey$Running_Letters %>%
+  select(uid, RUNNINGtest_TrialNr, Stimulus_ACC) %>%
+  group_by(uid) %>%
+  mutate(Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                               ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC))) %>% 
+  spread(RUNNINGtest_TrialNr, Stimulus_ACC) %>%
+  ungroup() %>% 
+  select(-uid)
+
+print(paste0("working memory accuracy = ", round(psych::alpha(x)$total$raw_alpha,2)))
+
+
+
+# flanker task ------------------------------------------------------------
+# 80 congruent trials (1 person with 79)
+# 20 incongruent trials
+type <- unique(survey$Flanker$Congruency)
+
+# Accuracy
+map(type, function(i) {
+  x <- survey$Flanker %>%
+    filter(Congruency == i) %>%
+    select(uid, FLANKERtest_TrialNr, Stimulus_ACC) %>%
+    group_by(uid) %>% 
+    mutate(row = 1:n(),
+           Stimulus_ACC = ifelse(Stimulus_ACC == TRUE, 1,
+                                 ifelse(Stimulus_ACC == FALSE, 0, Stimulus_ACC)),
+           Stimulus_ACC = as.numeric(Stimulus_ACC)) %>% 
+    select(-FLANKERtest_TrialNr) %>% 
+    spread(row, Stimulus_ACC) %>%
+    ungroup() %>% 
+    select(-uid)
+  
+  print(paste0(i, " errors = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+# time
+map(type, function(i) {
+  x <- survey$Flanker %>%
+    filter(Congruency == i) %>%
+    select(uid, FLANKERtest_TrialNr, Stimulus_RT) %>%
+    group_by(uid) %>% 
+    mutate(row = 1:n()) %>% 
+    select(-FLANKERtest_TrialNr) %>% 
+    spread(row, Stimulus_RT) %>%
+    ungroup() %>% 
+    select(-uid)
+  
+  print(paste0(i, " time = ", round(psych::alpha(x)$total$raw_alpha,2)))
+})
+
+
+# switch cost
+# prepare data
+x <- survey$Flanker %>%
+  select(uid, Congruency, Stimulus_RT) %>%
+  group_by(uid, Congruency) %>%
+  mutate(itemnum = row_number())
+
+# select odd and even items
+odd_con <- seq(1,80,2)
+even_con <- seq(2,80,2)
+
+odd_in <- seq(1,20,2)
+even_in <- seq(2,20,2)
+
+# calculate reliability
+con_o <- x %>% 
+  filter(itemnum %in% odd_con) %>% 
+  group_by(uid) %>% 
+  summarise(con1 = mean(Stimulus_RT))
+
+in_o <- x %>% 
+  filter(itemnum %in% odd_in) %>% 
+  group_by(uid) %>% 
+  summarise(in1 = mean(Stimulus_RT))
+
+con_e <- x %>% 
+  filter(itemnum %in% even_con) %>% 
+  group_by(uid) %>% 
+  summarise(con2 = mean(Stimulus_RT))
+
+in_e <- x %>% 
+  filter(itemnum %in% even_in) %>% 
+  group_by(uid) %>% 
+  summarise(in2 = mean(Stimulus_RT))
+
+
+datalist <- list(con_o, in_o, con_e, in_e)
+
+x <- datalist %>% reduce(left_join, by = "uid") %>% 
+  group_by(uid) %>% 
+  summarise(cost1 = con2 - con1,
+            cost2 = in2 - in1)
+
+cor <- cor.test(x$cost1, x$cost2)
+
+# Adjust with the Spearman-Brown prophecy formula = (2*r) / (1+r)  
+print(paste0("inhibitory cost = ", round((2*cor$estimate) / (1+cor$estimate),2)))
+
 ```
 
-## Drone
+
+## Communication measures
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# select variables
 x <- vars %>% 
-  select(team, driving_years_drone:neuroticism_drone) %>% 
-  gather(var, val, -team) %>% 
-  mutate(var = str_remove(var, "_drone")) %>% 
-  group_by(var) %>% 
-  summarise(mean = mean(val, na.rm = T),
-            sd = sd(val, na.rm = T))
+  select(co_info_help_overall:drive_frust_overall, -contains("ratio"), -contains("total"))
+
+# descriptives
+descriptives(x)
+
+# distributions
+distributions(x)
+
+# correlations
+kable(star_matrix(x))
+
+```
+
+## Reliability estimates
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# reliability for each comms variable
+name <- names(vars %>% select(co_info_help_overall:drive_frust_overall, -contains("ratio"), -contains("total")))
+              
+name <- gsub("_overall", "", name)
+
+map(name, function(i) {
+  x <- vars %>%
+    ungroup() %>% 
+    select(team, co_info_harm_1:drive_total_5) %>% 
+    gather(var, val, -team) %>% 
+    mutate(lap = str_extract(var, "_[1-5]"),
+           lap = as.numeric(str_remove(lap, "_")),
+           var = str_remove(var, "_[1-5]")) %>% 
+    filter(var == i) %>% 
+    spread(lap, val) %>% 
+    select(-team, -var)
+  
+  paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
+})
+```
+
+## 
+Given the moderate to high correlations between the communication variables, it looks like there is a multicollinearity issue. Need to reduce comms variables to a smaller number using factor analysis.
+
+# Conduct EFA to extract comms factors
+Reduce variables to smaller number of factors and correlate with each other. It looks like 3 components can be extracted from the comms variables.
+
+## Correlations between original comms variables
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# select original comms variables
+pca <- vars %>% dplyr::select(co_info_help_overall:drive_frust_overall, 
+                -contains("ratio"), -co_total_help_overall, 
+                -co_total_harm_overall, -co_total_overall)
+
+# create the correlation matrix for PCA so we know how it was done (e.g., how missing values were treated)
+cor_pca <- cor(pca, use="pairwise.complete.obs")
+
+# print correlations
+kable(round(cor_pca, 2))
+
+# Visualise correlations to see if variables appear to cluster
+corrplot(cor(pca, use="complete.obs"), order = "hclust", tl.col='black', tl.cex=.75)
+
+```
+
+## KMO and Bartlett's test of Spherecity
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+print(KMO(cor_pca))
+
+# Bartlett's test of spherecity
+print("Bartletts test of spherecity")
+print(data.frame(cortest.bartlett(cor_pca, n = 55)))
+```
+
+## Communalities
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+library(GPArotation)
+
+# 3-component PCA
+n_comp <- 3
+rotate_method <- "promax"
+score_method <- "Bartlett"
+
+fit <- principal(pca, rotate = rotate_method, nfactors = n_comp, 
+                        method = score_method, scores = TRUE, n.obs = 55)
+
+# communalities
+x <- data.frame(communalities = fit$communality)
 
 kable(x)
+
 ```
+
+## Variance explained by the extracted components
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# variance explained
+x <- data.frame(component = 1:9,
+           eigen = fit$values,
+           prop_var = c(fit$Vaccounted[2,c(1:3)], rnorm(6, 0, 0)),
+           cum_var = c(fit$Vaccounted[3,c(1:3)], rnorm(6, 0, 0)),
+           rotation_SS_load = c(fit$Vaccounted[1,c(1:3)], rnorm(6, 0, 0))) %>% 
+  round(2)
+
+x[x == 0] <- ""
+
+kable(x)
+
+# Scree plot
+p <- data.frame(component = 1:9,
+           eigen = fit$values)
+
+p %>% ggplot(aes(x = component, y = eigen)) +
+  geom_line() + geom_point() +
+  scale_x_continuous(breaks = 1:9) +
+  theme_minimal() +
+  labs(title = "Scree plot") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+## Pattern matrix
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# pattern matrix
+load <- data.frame(var = rownames(fit$loadings),
+                   PC1 = round(fit$loadings[1:9], 2),
+                   PC2 = round(fit$loadings[10:18], 2),
+                   PC3 = round(fit$loadings[19:27], 2)) %>% 
+  mutate(PC1 = ifelse(PC1 < .3 & PC1 > -.3, "", PC1),
+         PC2 = ifelse(PC2 < .3 & PC2 > -.3, "", PC2),
+         PC3 = ifelse(PC3 < .3 & PC3 > -.3, "", PC3)) %>% 
+  arrange(desc(PC1), desc(PC2), desc(PC3))
+  
+kable(load)
+
+```
+
+## Component correlations matrix
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# Component correlations matrix
+rownames(fit$r.scores) <- c("inconsistent", "terrible", "helpful")
+colnames(fit$r.scores) <- c("inconsistent", "terrible", "helpful")
+
+round(fit$r.scores,2)
+
+```
+
+## Check that component scores extracted using SPSS and R are the same
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>% 
+  rename(inconsistent_codriver_r = RC1, terrible_codriver_r = RC2, helpful_exchange_r = RC3)
+
+# append component scores to dataset
+vars <- cbind(vars, pca_scores)
+
+# check that spss and r component scores are the same
+cor1 <- cor.test(vars$inconsistent_codriver, vars$inconsistent_codriver_r)
+cor2 <- cor.test(vars$terrible_codriver, vars$terrible_codriver_r)
+cor3 <- cor.test(vars$helpful_exchange, vars$helpful_exchange_r)
+
+data.frame(component = c("inconsistent_codriver", "terrible_codriver", "helpful_exchange"),
+           r = round(c(cor1$estimate, cor2$estimate, cor3$estimate),4))
+
+```
+
+
+# Regression analyses
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# functions to fit regression models and check assumptions + multicollinearity
+
+# function to print sig correlations between IVs and DVs
+sig_corrs <- function(data, dv) {
+  # store correlations as df and convert to long format
+  r <- data.frame(data$r) %>% 
+    mutate(rowname = rownames(data$r)) %>% 
+    gather(var , r, -rowname)
+  
+  # store p-values as df and convert to long format
+  p <- data.frame(data$p) %>% 
+    mutate(rowname = rownames(data$p)) %>% 
+    gather(var , p, -rowname)
+  
+  # combine r and p and print sig. correlations for each comms factor
+  map(dv, function(i) {
+    r %>% 
+      left_join(p, by = c("rowname", "var")) %>% 
+      filter(var %in% i) %>% 
+      filter(!rowname %in% dv) %>% 
+      filter(p < .05 & r != 1) %>% 
+      select(-p) %>% 
+      spread(var, r)  
+  })
+}
+
+# function to select variables for the regression models
+select_vars <- function(dv) {
+  a <- bind_rows(x) %>% 
+    select(rowname, dv) %>% 
+    na.omit() %>% select(rowname) %>% 
+    filter(!rowname %in% c("sex_driver", "sex_co_driver", "sit.awareness_driver", 
+                           "sit.awareness_co_driver", "sit.awareness",
+                           "leadership_driver", "leadership_co_driver", "leadership"))
+  
+  vars %>% select(a$rowname)
+}
+
+# function to fit regression model, and run diagnostics for overall simulation-derived metrics
+regress <- function(dv) {
+  # print dv name
+  print(paste0("DV = ", dv))
+  n <- names(var)
+  
+  var_std <- var %>% 
+    # mutate(prop_female = factor(prop_female)) %>% 
+    mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+  print(psych::describe(var_std))
+  
+  # create regression formula
+  fm <- as.formula(paste0("vars$", dv, " ~ ", paste("scale(", n, ")", collapse = " + ")))
+  
+  # fit model
+  f <- lm(fm, data = var)
+  
+  # results
+  print(summary(f))
+  
+  print(ols_correlations(f))
+   
+  # check assumptions and multicollinearity
+  plot(f)
+  
+  # plot correlations between IVs
+  p <- vars %>% select(n) %>% 
+    ggcorr(method = "pairwise.complete.obs", 
+           label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot
+           hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels
+  # more detailed plot: distribution, scatterplot, correlations
+  # vars %>% select(x, issue) %>% 
+  #   ggpairs(., lower = list(continuous = wrap("smooth", alpha = 0.3, size=0.1)))
+  
+  # print correlation plot
+  print(p)
+
+  # check for multicollinearity
+  print(omcdiag(vars %>% select(n), vars %>% select(dv)))
+
+  print(imcdiag(vars %>% select(n), vars %>% select(dv)))
+   
+}
+
+# function to select IVs, fit regression model, and run diagnostics for event simulation-derived metrics (no fog/fog)
+fog_regress <- function(dv) {
+  # select variables
+  a <- na.omit(x %>% select(rowname, dv)) %>% 
+    # select(rowname) %>% 
+    filter(!rowname %in% c("sit.awareness_driver", "sit.awareness_co_driver", "sit.awareness",
+                           "leadership_driver", "leadership_co_driver", "leadership"))
+  
+  a <- a %>% filter(!rowname %in% c("sex_driver", "sex_co_driver"))
+  
+  var <- vars %>% select(dv, a$rowname)
+  name <- names(var[-1])
+  # create regression formula
+  fm <-   as.formula(paste(dv, " ~ ", paste(name, collapse = " + ")))
+  
+  
+  
+  # fit model
+  f <- lm(fm, data = var)
+  
+  # print dv name
+  print(dv)
+  
+  # results
+  summary(f)
+  
+  # })
+}
+
+# function for adding interactions to regression iteratively
+# names of comms factors
+interact_female <- function(dv) {
+  map(comms_fac, function(i) {
+    if (all(c(i, "prop_female") %in% names(var))) {
+      # standardise IVs
+      var_std <- var %>% 
+      # mutate(prop_female = factor(prop_female)) %>% 
+      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+      fm <- as.formula(paste0("vars$", dv, "~", paste0(i, "*prop_female", " + .")))
+      
+      f <- lm(fm, data = var_std)
+      
+      summary(f)
+    }
+  })
+}
+
+
+interact_sex <- function(a) {
+  map(comms_fac, function(i) {
+    if (all(c(i, "sex_driver") %in% names(var))) {
+      # standardise IVs
+      var_std <- var %>% 
+      # mutate(prop_female = factor(prop_female)) %>% 
+      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  
+      print(psych::describe(var_std))
+  
+      fm <- as.formula(paste0("vars$", a, "~", paste0(i, "*sex_driver", " + .")))
+      
+      f <- lm(fm, data = var_std)
+      
+      summary(f)
+    }
+  })
+}
+
+```
+
+## Correlations between all variables
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# select vars
+# aus_born 1 == "Australia" 0 == "other"
+# eng_fl 1 == "english" 0 == "other"
+
+x <- vars %>% 
+  select(sim_metrics, comms_fac, age_co_driver:sex_driver, prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone)
+
+kable(star_matrix(x))
+
+```
+
+## Predicting the communication factors
+## Which variables sig. correlate with the communication factors?
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# select variables and create correlation matrix
+x <- vars %>% 
+  select(comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
+  psych::corr.test() 
+
+x <- sig_corrs(x, comms_fac)
+
+```
+
+## Inconsistent codriver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "inconsistent_codriver"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+interact_female(dv)
+
+# interact_sex(vars$collisions_overall)
+
+```
+
+## Inconsistent codriver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "helpful_exchange"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+interact_female(dv)
+
+# interact_sex(vars$collisions_overall)
+
+```
+
+## Inconsistent codriver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "terrible_codriver"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+interact_female(dv)
+
+# interact_sex(vars$collisions_overall)
+
+```
+
+## Predicting the driving-simulation metrics
+## Which variables sig. correlate with the driving-simulation metrics?
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+x <- vars %>% 
+  select(sim_metrics, comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
+  psych::corr.test() 
+
+sig_corrs(x, sim_metrics)
+```
+
+## Collisions overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "collisions_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+interact_female(dv)
+
+# interact_sex(vars$collisions_overall)
+
+# alternative method of checking assumptions and multicollinearity
+# library("olsrr")
+# Vignette: https://cran.r-project.org/web/packages/olsrr/vignettes/regression_diagnostics.html
+# VIFs > 4 require investigation
+# Condition index: Collinearity is spotted by finding 2 or more variables that have large proportions of variance (.50 or more) that correspond to large condition indices. A rule of thumb is to label as large those condition indices in the range of 30 or larger.
+# ols_coll_diag(fit)
+# ols_correlations(fit) # Relative importance of independent variables in determining Y. How much each variable uniquely contributes to R2 over and above that which can be accounted for by the other predictors.
+# ols_plot_diagnostics(fit)
+# ols_plot_resid_regressor(fit)
+```
+
+## Speed overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "speed_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+interact_female(dv)
+
+# interact_sex("collisions_overall")
+# # with sex variable
+# var2 <- select_vars_sex(4) %>% select(-leadership_co_driver, -sit.awareness_driver) # 19 drivers missing situation awareness data so removed
+# 
+# # mean center IVs
+# var2_std <- var2 %>% 
+#   mutate(sex_driver = factor(sex_driver)) %>%
+#   mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+# 
+# psych::describe(var2_std)
+# 
+# # regression without interactions
+# fit2 <- lm(vars$speed_overall ~ .,
+#            data = var2_std)
+# 
+# summary(fit2)
+# ols_correlations(fit2)
+
+# interact_sex("collisions_overall")
+
+```
+
+## Distance overall
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "distance_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+```
+
+
+
+
+
+

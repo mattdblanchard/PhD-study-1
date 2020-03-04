@@ -495,9 +495,11 @@ vars <- datalist %>% reduce(left_join, by = "team")
 demo <- read_csv("data/demographics.csv") %>% 
   mutate(team = str_remove(uid, "-[d-g][1-2]"),
          sex = abs(gender - 2),
+         aus_born = ifelse(aus_born == 1, 1, 0),
+         eng_fl = ifelse(eng_fl == 1, 1, 0),
          role = ifelse(str_detect(uid, "-[d-g][2]"), "driver", "co_driver")) %>% 
-  select(team, age, sex, role) %>% 
-  gather(var, val, age, sex) %>% 
+  select(team, age, sex, aus_born, aus_years, eng_fl, dic_use, role) %>% 
+  gather(var, val, age:dic_use) %>% 
   unite(var, var, role) %>% 
   spread(var, val) %>% 
   filter(!is.na(age_co_driver)) %>% 
@@ -508,7 +510,7 @@ demo <- read_csv("data/demographics.csv") %>%
 vars <- vars %>% left_join(demo, by = "team")
 
 # last saved 27 Feb 2020
-vars %>% write_csv("data/200227_comms_vars.csv")
+vars %>% write_csv("data/200303_comms_vars.csv")
 
 # save data for SK's SPSS efa script
 # data <- vars
@@ -523,7 +525,7 @@ vars %>% write_csv("data/200227_comms_vars.csv")
 
 
 # Need to conduct EFA in SPSS before running final part of script ---------
-d <- read_csv("data/200227_comms_vars.csv")
+d <- read_csv("data/200303_comms_vars.csv")
 
 # add efa factors to data
 # read factor scores for comms vars
@@ -534,5 +536,5 @@ efa <- read_csv("data/200221_comms_efa_spss_n54.csv") %>%
 d <- d %>% left_join(efa, by = "team")
 
 # last saved 27 Feb 2020
-d %>% write_csv("data/200227_comms_efa_vars.csv")
+d %>% write_csv("data/200303_comms_efa_vars.csv")
 
