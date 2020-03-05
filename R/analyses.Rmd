@@ -18,7 +18,7 @@ library(corrplot)
 library(psych)
 library(car) # load package to diagnose multicollinearity
 library(GGally)
-library(olsrr) # print semi-part correlations
+# library(olsrr) # print semi-part correlations
 library(mctest)
 
 # read sim variables
@@ -1375,7 +1375,8 @@ sig_corrs <- function(data, dv) {
   # store correlations as df and convert to long format
   r <- data.frame(data$r) %>% 
     mutate(rowname = rownames(data$r)) %>% 
-    gather(var , r, -rowname)
+    gather(var , r, -rowname) %>% 
+    mutate(r = round(r, 2))
   
   # store p-values as df and convert to long format
   p <- data.frame(data$p) %>% 
@@ -1406,17 +1407,17 @@ select_vars <- function(dv) {
   vars %>% select(a$rowname)
 }
 
+
 # function to fit regression model, and run diagnostics for overall simulation-derived metrics
 regress <- function(dv) {
   # print dv name
   print(paste0("DV = ", dv))
   n <- names(var)
   
-  var_std <- var %>% 
-    # mutate(prop_female = factor(prop_female)) %>% 
-    mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-  
-  print(psych::describe(var_std))
+  # var_std <- var %>% 
+  #   # mutate(prop_female = factor(prop_female)) %>% 
+  #   mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+  # print(psych::describe(var_std))
   
   # create regression formula
   fm <- as.formula(paste0("vars$", dv, " ~ ", paste("scale(", n, ")", collapse = " + ")))
@@ -1427,8 +1428,35 @@ regress <- function(dv) {
   # results
   print(summary(f))
   
-  print(ols_correlations(f))
-   
+  # print zero-order, semi-part and partial correlations
+  data <- cbind(vars %>% select(dv), var) %>% na.omit()
+  library(ppcor) # package requires MASS which removes the select function from dplyr
+  r <- cor(data)
+  part <- pcor(data)
+  spart <- spcor(data)
+  cor <- data.frame(zero_order = round(r[1,c(2:length(data))],2),
+                    partial = round(part[[1]][1,c(2:length(data))],2),
+                    part = round(spart[[1]][1,c(2:length(data))],2))
+  
+  print(cor)
+  
+  # detach packages and reload dplyr
+  detach("package:ppcor", unload=TRUE)
+  detach("package:MASS", unload=TRUE)
+  library(dplyr)
+  
+  # scatterplots of relationship between each IV and the DV
+  # library(Hmisc)
+  p <- vars %>% select(dv, names(var)) %>% 
+    gather(var, val, -inconsistent_codriver) %>% 
+    ggplot(aes(x = val, y = inconsistent_codriver)) +
+    geom_point() +
+    facet_wrap(~var, scales = "free_x") +
+    # hmisc::stat_summary(fun.data= mean_cl_normal) +
+    geom_smooth(method = 'lm', formula = y~x, se = FALSE)
+  
+  print(p)
+  
   # check assumptions and multicollinearity
   plot(f)
   
@@ -1443,12 +1471,12 @@ regress <- function(dv) {
   
   # print correlation plot
   print(p)
-
+  
   # check for multicollinearity
   print(omcdiag(vars %>% select(n), vars %>% select(dv)))
-
+  
   print(imcdiag(vars %>% select(n), vars %>% select(dv)))
-   
+  
 }
 
 # function to select IVs, fit regression model, and run diagnostics for event simulation-derived metrics (no fog/fog)
@@ -1487,9 +1515,9 @@ interact_female <- function(dv) {
     if (all(c(i, "prop_female") %in% names(var))) {
       # standardise IVs
       var_std <- var %>% 
-      # mutate(prop_female = factor(prop_female)) %>% 
-      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-  
+        # mutate(prop_female = factor(prop_female)) %>% 
+        mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+      
       fm <- as.formula(paste0("vars$", dv, "~", paste0(i, "*prop_female", " + .")))
       
       f <- lm(fm, data = var_std)
@@ -1544,7 +1572,94 @@ x <- vars %>%
 
 x <- sig_corrs(x, comms_fac)
 
+kable(x)
+
 ```
+
+<!-- ``` {r echo=FALSE, message=FALSE, warning=FALSE} -->
+<!-- # conduct regression using a loop -->
+<!-- map(comms_fac, function(i) { -->
+<!--   cat("  \n###",  i, "  \n") -->
+<!-- # set the dv -->
+<!--   dv <- i -->
+
+<!--   # select variables for the regression models -->
+<!--     a <- bind_rows(x) %>%  -->
+<!--       select(rowname, dv) %>%  -->
+<!--       na.omit() %>% select(rowname) %>%  -->
+<!--       filter(!rowname %in% c("sex_driver", "sex_co_driver", "sit.awareness_driver",  -->
+<!--                              "sit.awareness_co_driver", "sit.awareness", -->
+<!--                              "leadership_driver", "leadership_co_driver", "leadership")) -->
+
+<!--     var <- vars %>% select(a$rowname) -->
+
+
+<!--   # function to fit regression model, and run diagnostics for overall simulation-derived metrics -->
+<!--     # print dv name -->
+<!--     print(paste0("DV = ", dv)) -->
+<!--     n <- names(var) -->
+
+<!--     # var_std <- var %>%  -->
+<!--     #   # mutate(prop_female = factor(prop_female)) %>%  -->
+<!--     #   mutate_if(is.numeric, scale, center=TRUE, scale=TRUE) -->
+<!--     # print(psych::describe(var_std)) -->
+
+<!--     # create regression formula -->
+<!--     fm <- as.formula(paste0("vars$", dv, " ~ ", paste("scale(", n, ")", collapse = " + "))) -->
+
+<!--     # fit model -->
+<!--     f <- lm(fm, data = var) -->
+
+<!--     # results -->
+<!--     print(summary(f)) -->
+
+<!--     # print zero-order, semi-part and partial correlations -->
+<!--     data <- cbind(vars %>% select(dv), var) %>% na.omit() -->
+<!--     library(ppcor) # package requires MASS which removes the select function from dplyr -->
+<!--     r <- cor(data) -->
+<!--     part <- pcor(data) -->
+<!--     spart <- spcor(data) -->
+<!--     cor <- data.frame(zero_order = round(r[1,c(2:length(data))],2), -->
+<!--                       partial = round(part[[1]][1,c(2:length(data))],2), -->
+<!--                       part = round(spart[[1]][1,c(2:length(data))],2)) -->
+
+<!--     print(cor) -->
+
+<!--     # detach packages and reload dplyr -->
+<!--     detach("package:ppcor", unload=TRUE) -->
+<!--     detach("package:MASS", unload=TRUE) -->
+<!--     library(dplyr) -->
+
+<!--     # check assumptions and multicollinearity -->
+<!--     plot(f) -->
+
+<!--     # plot correlations between IVs -->
+<!--     p <- vars %>% select(n) %>%  -->
+<!--       ggcorr(method = "pairwise.complete.obs",  -->
+<!--              label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot -->
+<!--              hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels -->
+
+<!--     # more detailed plot: distribution, scatterplot, correlations -->
+<!--     # vars %>% select(x, issue) %>%  -->
+<!--     #   ggpairs(., lower = list(continuous = wrap("smooth", alpha = 0.3, size=0.1))) -->
+
+<!--     # print correlation plot -->
+<!--     print(p) -->
+
+<!--     # check for multicollinearity -->
+<!--     print(omcdiag(vars %>% select(n), vars %>% select(dv))) -->
+
+<!--     print(imcdiag(vars %>% select(n), vars %>% select(dv))) -->
+
+<!-- cat("  \n") -->
+
+<!-- }) -->
+
+<!-- ``` -->
+
+
+
+
 
 ## Inconsistent codriver
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
@@ -1557,14 +1672,9 @@ var <- select_vars(dv)
 # fit regression model
 regress(dv)
 
-# fit regression with interactions bw comms components and prop_female
-interact_female(dv)
-
-# interact_sex(vars$collisions_overall)
-
 ```
 
-## Inconsistent codriver
+## Helpful exchange
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "helpful_exchange"
@@ -1575,14 +1685,9 @@ var <- select_vars(dv)
 # fit regression model
 regress(dv)
 
-# fit regression with interactions bw comms components and prop_female
-interact_female(dv)
-
-# interact_sex(vars$collisions_overall)
-
 ```
 
-## Inconsistent codriver
+## Terrible codriver
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "terrible_codriver"
@@ -1593,11 +1698,6 @@ var <- select_vars(dv)
 # fit regression model
 regress(dv)
 
-# fit regression with interactions bw comms components and prop_female
-interact_female(dv)
-
-# interact_sex(vars$collisions_overall)
-
 ```
 
 ## Predicting the driving-simulation metrics
@@ -1607,7 +1707,7 @@ x <- vars %>%
   select(sim_metrics, comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
   psych::corr.test() 
 
-sig_corrs(x, sim_metrics)
+x <- sig_corrs(x, sim_metrics)
 ```
 
 ## Collisions overall
