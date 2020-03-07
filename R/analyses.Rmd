@@ -242,7 +242,8 @@ x <- vars %>%
 kable(x)
 
 ```
-### Reliability overall
+
+## Reliability overall
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # Reliability estimates for each psychometric measure overall
 # read survey data
@@ -1254,10 +1255,10 @@ pca <- vars %>% dplyr::select(co_info_help_overall:drive_frust_overall,
                 -co_total_harm_overall, -co_total_overall)
 
 # create the correlation matrix for PCA so we know how it was done (e.g., how missing values were treated)
-cor_pca <- cor(pca, use="pairwise.complete.obs")
+cor_pca <- star_matrix(pca)
 
 # print correlations
-kable(round(cor_pca, 2))
+kable(cor_pca)
 
 # Visualise correlations to see if variables appear to cluster
 corrplot(cor(pca, use="complete.obs"), order = "hclust", tl.col='black', tl.cex=.75)
@@ -1267,11 +1268,11 @@ corrplot(cor(pca, use="complete.obs"), order = "hclust", tl.col='black', tl.cex=
 ## KMO and Bartlett's test of Spherecity
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
-print(KMO(cor_pca))
+print(KMO(cor(pca, use="complete.obs")))
 
 # Bartlett's test of spherecity
 print("Bartletts test of spherecity")
-print(data.frame(cortest.bartlett(cor_pca, n = 55)))
+print(data.frame(cortest.bartlett(cor(pca, use="complete.obs"), n = 55)))
 ```
 
 ## Communalities
@@ -1287,7 +1288,7 @@ fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
                         method = score_method, scores = TRUE, n.obs = 55)
 
 # communalities
-x <- data.frame(communalities = fit$communality)
+x <- data.frame(communalities = round(fit$communality, 2))
 
 kable(x)
 
@@ -1446,16 +1447,16 @@ regress <- function(dv) {
   library(dplyr)
   
   # scatterplots of relationship between each IV and the DV
-  # library(Hmisc)
-  p <- vars %>% select(dv, names(var)) %>% 
-    gather(var, val, -inconsistent_codriver) %>% 
-    ggplot(aes(x = val, y = inconsistent_codriver)) +
-    geom_point() +
-    facet_wrap(~var, scales = "free_x") +
-    # hmisc::stat_summary(fun.data= mean_cl_normal) +
-    geom_smooth(method = 'lm', formula = y~x, se = FALSE)
-  
-  print(p)
+p <- vars %>% select(dv, names(var)) %>% 
+  gather(var, val, names(var)) %>% 
+ggplot(aes(x = val, y = get(dv))) +
+  geom_point() +
+  facet_wrap(~var, scales = "free_x") +
+  geom_smooth(method='lm', formula = y~x, se=FALSE) +
+  theme_minimal() +
+  labs(x = "", y = str_replace(dv, "_", " "))
+
+print(p)
   
   # check assumptions and multicollinearity
   plot(f)
@@ -1708,6 +1709,8 @@ x <- vars %>%
   psych::corr.test() 
 
 x <- sig_corrs(x, sim_metrics)
+
+kable(x)
 ```
 
 ## Collisions overall
