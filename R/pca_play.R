@@ -5,20 +5,19 @@ library(psych)
 library(corrplot)
 library(GPArotation)
 library(knitr)
+library(corrr)
 
 # Great post about running PCA with rotation in R
 # https://stats.stackexchange.com/questions/59213/how-to-compute-varimax-rotated-principal-components-in-r
 
 # read in the data and select the comms variables
-vars <- read_csv(here("data/200221_comms_efa_vars.csv")) %>% 
+vars <- read_csv(here("data/200309_comms_efa_vars.csv")) %>% 
   filter(!team %in% c("17080712_1", "17080810_1"))
 
 # create vector of event types for loop (map)
 type <- c("overall", "no fog", "fog")
 
-# create empty dataframe to store component scores
-pca_scores <- data.frame(a = NA)
-
+# run PCA and save component scores
 pca_scores <- map(type, function(i) {
 
 # set the event type (overall, no fog, or fog)
@@ -150,14 +149,11 @@ if (event == "overall") {
 }
 
 # save component scores
-pca_scores <- cbind(pca_scores, scores) %>% select(-a)
+scores
 
 })
 
 # add component scores to vars dataset
 vars <- vars %>% bind_cols(bind_cols(pca_scores))
-
-
-
 
 

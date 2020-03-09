@@ -512,29 +512,48 @@ vars <- vars %>% left_join(demo, by = "team")
 # last saved 27 Feb 2020
 vars %>% write_csv("data/200303_comms_vars.csv")
 
-# save data for SK's SPSS efa script
-# data <- vars
+# # save data for SK's SPSS efa script
+# data <- vars %>%
+#   select(team,
+#          co_info_help_overall, co_info_harm_overall, co_instruct_help_overall,
+#          co_instruct_harm_overall, co_redundant_overall, co_question_overall,
+#          drive_question_overall, drive_informs_overall, drive_frust_overall,
+#          co_info_help_no_fog, co_info_harm_no_fog, co_instruct_help_no_fog,
+#          co_instruct_harm_no_fog, co_redundant_no_fog, co_question_no_fog,
+#          drive_question_no_fog, drive_informs_no_fog, drive_frust_no_fog,
+#          co_info_help_fog, co_info_harm_fog, co_instruct_help_fog,
+#          co_instruct_harm_fog, co_redundant_fog, co_question_fog,
+#          drive_question_fog, drive_informs_fog, drive_frust_fog,
+#          driving_years, gaming_time, congruent_errors, congruent_time,
+#          incongruent_errors, incongruent_time, inhibitory_cost, repeat_errors,
+#          repeat_time, switch_errors, switch_time, switch_cost, wm_accuracy,
+#          resilience, gf_accuracy, confidence, bias, discrimination, agreeableness,
+#          conscientiousness, extraversion, intellect, neuroticism, effort,
+#          frustration, mental_demand, performance, physical_demand, temporal_demand, effort_other,
+#          frustration_other, mental_demand_other, performance_other, physical_demand_other,
+#          temporal_demand_other, events_missed_overall, time_taken_overall, distance_overall,
+#          distance_overall_deviation, distance_overall_deviation_abs, collisions_overall, speed_overall)
 # 
 # data[is.na(data)] <- 99999
 # table(is.na(data))
 # table(data == 99999)
-# 
-# data %>% write_csv("data/comms_data_4_SK_efa.csv")
+# data %>% write_csv("data/200309_comms_data_4_SK_efa.csv")
+
 
 
 
 
 # Need to conduct EFA in SPSS before running final part of script ---------
-d <- read_csv("data/200303_comms_vars.csv")
+d <- read_csv("data/200303_comms_efa_vars.csv")
 
 # add efa factors to data
 # read factor scores for comms vars
-efa <- read_csv("data/200221_comms_efa_spss_n54.csv") %>% 
-  select(team, inconsistent_codriver, terrible_codriver, helpful_exchange)
+efa <- read_csv("data/200309_comms_efa_spss_n54.csv") %>% 
+  select(team, inconsistent_codriver_no_fog_3fac:terrible_codriver_fog_2fac)
 
 # add comms factors to dataset
 d <- d %>% left_join(efa, by = "team")
 
 # last saved 27 Feb 2020
-d %>% write_csv("data/200303_comms_efa_vars.csv")
+d %>% write_csv("data/200309_comms_efa_vars.csv")
 

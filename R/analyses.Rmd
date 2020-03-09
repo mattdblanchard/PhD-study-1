@@ -22,7 +22,7 @@ library(GGally)
 library(mctest)
 
 # read sim variables
-vars <- read_csv(here("data/200303_comms_efa_vars.csv")) %>% 
+vars <- read_csv(here("data/200309_comms_efa_vars.csv")) %>% 
       filter(!team %in% c("17080712_1", "17080810_1"))  # remove outliers: collisions("17080810_1"), distance("17081510_2")
 
 # read raw comms data
@@ -1397,34 +1397,58 @@ sig_corrs <- function(data, dv) {
 }
 
 # function to select variables for the regression models
-select_vars <- function(dv) {
-  a <- bind_rows(x) %>% 
-    select(rowname, dv) %>% 
-    na.omit() %>% select(rowname) %>% 
-    filter(!rowname %in% c("sex_driver", "sex_co_driver", "sit.awareness_driver", 
-                           "sit.awareness_co_driver", "sit.awareness",
-                           "leadership_driver", "leadership_co_driver", "leadership"))
-  
-  vars %>% select(a$rowname)
+select_vars <- function(dv, sex = FALSE) {
+  if(sex == FALSE) {
+    a <- bind_rows(x) %>% 
+      select(rowname, dv) %>% 
+      na.omit() %>% select(rowname) %>% 
+      filter(!rowname %in% c("sex_driver", "sex_co_driver", "sit.awareness_driver", 
+                             "sit.awareness_co_driver", "sit.awareness",
+                             "leadership_driver", "leadership_co_driver", "leadership"))
+  } else if (sex == TRUE) {
+    a <- bind_rows(x) %>% 
+      select(rowname, dv) %>% 
+      na.omit() %>% select(rowname) %>% 
+      filter(!rowname %in% c("prop_female", "sit.awareness_driver", 
+                             "sit.awareness_co_driver", "sit.awareness",
+                             "leadership_driver", "leadership_co_driver", "leadership"))
+  }
+  if (all(c("aus_born_co_driver", "eng_fl_co_driver") %in% a$rowname)) {
+    vars %>% select(a$rowname, -aus_born_co_driver)
+  } else {
+    vars %>% select(a$rowname)
+  }
 }
 
 
 # function to fit regression model, and run diagnostics for overall simulation-derived metrics
-regress <- function(dv) {
+regress <- function(dv, sex = FALSE) {
   # print dv name
   print(paste0("DV = ", dv))
   n <- names(var)
   
-  # var_std <- var %>% 
-  #   # mutate(prop_female = factor(prop_female)) %>% 
-  #   mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-  # print(psych::describe(var_std))
-  
-  # create regression formula
-  fm <- as.formula(paste0("vars$", dv, " ~ ", paste("scale(", n, ")", collapse = " + ")))
-  
-  # fit model
-  f <- lm(fm, data = var)
+  if(sex == FALSE) {
+    # create regression formula
+    fm <- as.formula(paste0("vars$", dv, " ~ ", paste("scale(", n, ")", collapse = " + ")))
+    
+    # fit model
+    f <- lm(fm, data = var)
+    
+  } else if(sex == TRUE) {
+    n <- n[n != "sex_driver"]
+    
+    # make sex a factor and standardise other variables  
+    std_var <- var %>%
+      mutate(sex_driver = factor(sex_driver)) %>%
+      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+    # print(psych::describe(var_std))
+    
+    # create regression formula
+    fm <- as.formula(paste0("vars$", dv, " ~ ", paste0("scale(", n, ")", collapse = " + "), " + sex_driver"))
+    
+    # fit model
+    f <- lm(fm, data = std_var)
+  }
   
   # results
   print(summary(f))
@@ -1447,16 +1471,16 @@ regress <- function(dv) {
   library(dplyr)
   
   # scatterplots of relationship between each IV and the DV
-p <- vars %>% select(dv, names(var)) %>% 
-  gather(var, val, names(var)) %>% 
-ggplot(aes(x = val, y = get(dv))) +
-  geom_point() +
-  facet_wrap(~var, scales = "free_x") +
-  geom_smooth(method='lm', formula = y~x, se=FALSE) +
-  theme_minimal() +
-  labs(x = "", y = str_replace(dv, "_", " "))
-
-print(p)
+  p <- vars %>% select(dv, names(var)) %>% 
+    gather(var, val, names(var)) %>% 
+    ggplot(aes(x = val, y = get(dv))) +
+    geom_point() +
+    facet_wrap(~var, scales = "free_x") +
+    geom_smooth(method='lm', formula = y~x, se=FALSE) +
+    theme_minimal() +
+    labs(x = "", y = str_replace(dv, "_", " "))
+  
+  print(p)
   
   # check assumptions and multicollinearity
   plot(f)
@@ -1474,39 +1498,11 @@ print(p)
   print(p)
   
   # check for multicollinearity
-  print(omcdiag(vars %>% select(n), vars %>% select(dv)))
-  
-  print(imcdiag(vars %>% select(n), vars %>% select(dv)))
-  
-}
-
-# function to select IVs, fit regression model, and run diagnostics for event simulation-derived metrics (no fog/fog)
-fog_regress <- function(dv) {
-  # select variables
-  a <- na.omit(x %>% select(rowname, dv)) %>% 
-    # select(rowname) %>% 
-    filter(!rowname %in% c("sit.awareness_driver", "sit.awareness_co_driver", "sit.awareness",
-                           "leadership_driver", "leadership_co_driver", "leadership"))
-  
-  a <- a %>% filter(!rowname %in% c("sex_driver", "sex_co_driver"))
-  
-  var <- vars %>% select(dv, a$rowname)
-  name <- names(var[-1])
-  # create regression formula
-  fm <-   as.formula(paste(dv, " ~ ", paste(name, collapse = " + ")))
-  
-  
-  
-  # fit model
-  f <- lm(fm, data = var)
-  
-  # print dv name
-  print(dv)
-  
-  # results
-  summary(f)
-  
-  # })
+  if (length(var) > 1) {
+    print(omcdiag(vars %>% select(n), vars %>% select(dv)))
+    
+    print(imcdiag(vars %>% select(n), vars %>% select(dv)))
+  }
 }
 
 # function for adding interactions to regression iteratively
@@ -1527,7 +1523,6 @@ interact_female <- function(dv) {
     }
   })
 }
-
 
 interact_sex <- function(a) {
   map(comms_fac, function(i) {
@@ -1658,10 +1653,6 @@ kable(x)
 
 <!-- ``` -->
 
-
-
-
-
 ## Inconsistent codriver
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
@@ -1702,7 +1693,7 @@ regress(dv)
 ```
 
 ## Predicting the driving-simulation metrics
-## Which variables sig. correlate with the driving-simulation metrics?
+## Which variables sig. correlate with the driving-simulation metrics overall?
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 x <- vars %>% 
   select(sim_metrics, comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
@@ -1714,6 +1705,7 @@ kable(x)
 ```
 
 ## Collisions overall
+## Using proportion of females
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "collisions_overall"
@@ -1727,8 +1719,6 @@ regress(dv)
 # fit regression with interactions bw comms components and prop_female
 interact_female(dv)
 
-# interact_sex(vars$collisions_overall)
-
 # alternative method of checking assumptions and multicollinearity
 # library("olsrr")
 # Vignette: https://cran.r-project.org/web/packages/olsrr/vignettes/regression_diagnostics.html
@@ -1740,7 +1730,24 @@ interact_female(dv)
 # ols_plot_resid_regressor(fit)
 ```
 
+## Using sex of driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "collisions_overall"
+
+# select IVs
+var <- select_vars(dv, sex = TRUE)
+
+# fit regression model
+regress(dv, sex = TRUE)
+
+# fit regression with interactions bw comms components and sex_driver
+# interact_sex(vars$collisions_overall)
+
+```
+
 ## Speed overall
+## Using proportion of females
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "speed_overall"
@@ -1753,6 +1760,84 @@ regress(dv)
 
 # fit regression with interactions bw comms components and prop_female
 interact_female(dv)
+
+```
+
+## Using sex of driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "speed_overall"
+
+# select IVs
+var <- select_vars(dv, sex = TRUE)
+
+# fit regression model
+regress(dv, sex = TRUE)
+
+# fit regression with interactions bw comms components and sex_driver
+# interact_sex(vars$collisions_overall)
+
+```
+
+## Distance overall
+Neither proportion of females or sex of driver correlate with distance so they were not included.
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "distance_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+```
+
+
+## Which variables sig. correlate with the driving-simulation metrics during fog-free periods?
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+sim_metrics_no_fog <- c("collisions_no_fog_overall", "speed_no_fog_overall", "distance_no_fog_overall")
+
+x <- vars %>% 
+  select(sim_metrics_no_fog, comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
+  psych::corr.test() 
+
+x <- sig_corrs(x, sim_metrics_no_fog)
+
+kable(x)
+```
+
+## Collisions fog-free periods
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "collisions_no_fog_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+interact_female(dv)
+
+# interact_sex(vars$collisions_overall)
+
+```
+
+## Speed fog-free periods
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "speed_no_fog_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+# interact_female(dv)
 
 # interact_sex("collisions_overall")
 # # with sex variable
@@ -1776,10 +1861,10 @@ interact_female(dv)
 
 ```
 
-## Distance overall
+## Distance fog-free periods
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
-dv <- "distance_overall"
+dv <- "distance_no_fog_overall"
 
 # select IVs
 var <- select_vars(dv)
@@ -1790,7 +1875,78 @@ regress(dv)
 ```
 
 
+## Which variables sig. correlate with the driving-simulation metrics during fog event probes?
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+sim_metrics_fog <- c("collisions_fog_overall", "speed_fog_overall", "distance_fog_overall")
+
+x <- vars %>% 
+  select(sim_metrics_fog, comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
+  psych::corr.test() 
+
+x <- sig_corrs(x, sim_metrics_fog)
+
+kable(x)
+```
+
+## Collisions fog event probes
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "collisions_fog_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
 
 
+```
 
+## Speed fog event probes
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "speed_fog_overall"
 
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+# fit regression with interactions bw comms components and prop_female
+# interact_female(dv)
+
+# interact_sex("collisions_overall")
+# # with sex variable
+# var2 <- select_vars_sex(4) %>% select(-leadership_co_driver, -sit.awareness_driver) # 19 drivers missing situation awareness data so removed
+# 
+# # mean center IVs
+# var2_std <- var2 %>% 
+#   mutate(sex_driver = factor(sex_driver)) %>%
+#   mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+# 
+# psych::describe(var2_std)
+# 
+# # regression without interactions
+# fit2 <- lm(vars$speed_overall ~ .,
+#            data = var2_std)
+# 
+# summary(fit2)
+# ols_correlations(fit2)
+
+# interact_sex("collisions_overall")
+
+```
+
+## Distance fog event probes
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "distance_fog_overall"
+
+# select IVs
+var <- select_vars(dv)
+
+# fit regression model
+regress(dv)
+
+```
