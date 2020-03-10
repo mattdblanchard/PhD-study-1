@@ -1435,16 +1435,24 @@ regress <- function(dv, sex = FALSE) {
     f <- lm(fm, data = var)
     
   } else if(sex == TRUE) {
-    n <- n[n != "sex_driver"]
+    sex_var <- n[n %in% c("sex_driver", "sex_co_driver")]
+    n <- n[!n %in% c("sex_driver", "sex_co_driver")]
     
     # make sex a factor and standardise other variables  
-    std_var <- var %>%
-      mutate(sex_driver = factor(sex_driver)) %>%
-      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-    # print(psych::describe(var_std))
+    if (sex_var == "sex_driver") {
+      std_var <- var %>%
+        mutate(sex_driver = factor(sex_driver)) %>%
+        mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+    } else if (sex_var == "sex_co_driver") {
+      std_var <- var %>%
+        mutate(sex_co_driver = factor(sex_co_driver)) %>%
+        mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+    }
+    
+    print(psych::describe(std_var))
     
     # create regression formula
-    fm <- as.formula(paste0("vars$", dv, " ~ ", paste0("scale(", n, ")", collapse = " + "), " + sex_driver"))
+    fm <- as.formula(paste0("vars$", dv, " ~ ", paste0("scale(", n, ")", collapse = " + "), " + ", sex_var))
     
     # fit model
     f <- lm(fm, data = std_var)
@@ -1486,7 +1494,7 @@ regress <- function(dv, sex = FALSE) {
   plot(f)
   
   # plot correlations between IVs
-  p <- vars %>% select(n) %>% 
+  p <- vars %>% select(names(var)) %>% 
     ggcorr(method = "pairwise.complete.obs", 
            label = TRUE, label_size = 3, label_round = 2, label_alpha = TRUE, # add text correlations value to plot
            hjust = 0.9, size = 4, color = "grey50", layout.exp = 3) # move variable labels
@@ -1499,42 +1507,41 @@ regress <- function(dv, sex = FALSE) {
   
   # check for multicollinearity
   if (length(var) > 1) {
-    print(omcdiag(vars %>% select(n), vars %>% select(dv)))
+    print(omcdiag(vars %>% select(names(var)), vars %>% select(dv)))
     
-    print(imcdiag(vars %>% select(n), vars %>% select(dv)))
+    print(imcdiag(vars %>% select(names(var)), vars %>% select(dv)))
   }
 }
 
 # function for adding interactions to regression iteratively
-# names of comms factors
-interact_female <- function(dv) {
+interact <- function(dv, sex = "prop_female") {
   map(comms_fac, function(i) {
-    if (all(c(i, "prop_female") %in% names(var))) {
-      # standardise IVs
-      var_std <- var %>% 
-        # mutate(prop_female = factor(prop_female)) %>% 
-        mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-      
-      fm <- as.formula(paste0("vars$", dv, "~", paste0(i, "*prop_female", " + .")))
-      
-      f <- lm(fm, data = var_std)
-      
-      summary(f)
-    }
-  })
-}
-
-interact_sex <- function(a) {
-  map(comms_fac, function(i) {
-    if (all(c(i, "sex_driver") %in% names(var))) {
-      # standardise IVs
-      var_std <- var %>% 
-      # mutate(prop_female = factor(prop_female)) %>% 
-      mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-  
-      print(psych::describe(var_std))
-  
-      fm <- as.formula(paste0("vars$", a, "~", paste0(i, "*sex_driver", " + .")))
+    if (all(c(i, sex) %in% names(var))) {
+      if (sex == "prop_female") {
+        # standardise IVs
+        var_std <- var %>% 
+          mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+        
+        print(psych::describe(var_std))
+        
+        fm <- as.formula(paste0("vars$", dv, "~", paste0(i, "*", sex, " + .")))
+      } else if (sex %in% c("sex_driver", "sex_co_driver")) {
+        # standardise IVs
+        if (sex == "sex_driver") {
+        var_std <- var %>% 
+          mutate(sex_driver = factor(sex_driver)) %>%
+          mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+        } else if (sex == "sex_co_driver") {
+        var_std <- var %>% 
+          mutate(sex_co_driver = factor(sex_co_driver)) %>%
+          mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+        }
+        
+        print(psych::describe(var_std))
+        
+        fm <- as.formula(paste0("vars$", dv, "~", paste0(i, "*", sex, " + .")))
+        
+      }
       
       f <- lm(fm, data = var_std)
       
@@ -1552,7 +1559,7 @@ interact_sex <- function(a) {
 # eng_fl 1 == "english" 0 == "other"
 
 x <- vars %>% 
-  select(sim_metrics, comms_fac, age_co_driver:sex_driver, prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone)
+  select(sim_metrics, comms_fac, age_co_driver:sex_driver, prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone, -contains("aus_years"), -contains("dic_use"))
 
 kable(star_matrix(x))
 
@@ -1717,7 +1724,7 @@ var <- select_vars(dv)
 regress(dv)
 
 # fit regression with interactions bw comms components and prop_female
-interact_female(dv)
+interact(dv)
 
 # alternative method of checking assumptions and multicollinearity
 # library("olsrr")
@@ -1742,7 +1749,7 @@ var <- select_vars(dv, sex = TRUE)
 regress(dv, sex = TRUE)
 
 # fit regression with interactions bw comms components and sex_driver
-# interact_sex(vars$collisions_overall)
+interact(dv, sex = "sex_driver")
 
 ```
 
@@ -1759,7 +1766,7 @@ var <- select_vars(dv)
 regress(dv)
 
 # fit regression with interactions bw comms components and prop_female
-interact_female(dv)
+interact(dv)
 
 ```
 
@@ -1775,7 +1782,7 @@ var <- select_vars(dv, sex = TRUE)
 regress(dv, sex = TRUE)
 
 # fit regression with interactions bw comms components and sex_driver
-# interact_sex(vars$collisions_overall)
+interact(dv, sex = "sex_driver")
 
 ```
 
@@ -1808,6 +1815,7 @@ kable(x)
 ```
 
 ## Collisions fog-free periods
+## Using proportion of females
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "collisions_no_fog_overall"
@@ -1819,13 +1827,29 @@ var <- select_vars(dv)
 regress(dv)
 
 # fit regression with interactions bw comms components and prop_female
-interact_female(dv)
-
-# interact_sex(vars$collisions_overall)
+interact(dv)
 
 ```
 
+## Using sex of the codriver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "collisions_no_fog_overall"
+
+# select IVs
+var <- select_vars(dv, sex = TRUE)
+
+# fit regression model
+regress(dv, sex = TRUE)
+
+# fit regression with interactions bw comms components and sex_driver
+interact(dv, sex = "sex_co_driver")
+
+```
+
+
 ## Speed fog-free periods
+## Using proportion of female only
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "speed_no_fog_overall"
@@ -1836,28 +1860,21 @@ var <- select_vars(dv)
 # fit regression model
 regress(dv)
 
-# fit regression with interactions bw comms components and prop_female
-# interact_female(dv)
+```
 
-# interact_sex("collisions_overall")
-# # with sex variable
-# var2 <- select_vars_sex(4) %>% select(-leadership_co_driver, -sit.awareness_driver) # 19 drivers missing situation awareness data so removed
-# 
-# # mean center IVs
-# var2_std <- var2 %>% 
-#   mutate(sex_driver = factor(sex_driver)) %>%
-#   mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-# 
-# psych::describe(var2_std)
-# 
-# # regression without interactions
-# fit2 <- lm(vars$speed_overall ~ .,
-#            data = var2_std)
-# 
-# summary(fit2)
-# ols_correlations(fit2)
+## Using sex of the driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "speed_no_fog_overall"
 
-# interact_sex("collisions_overall")
+# select IVs
+var <- select_vars(dv, sex = TRUE)
+
+# fit regression model
+regress(dv, sex = TRUE)
+
+# fit regression with interactions bw comms components and sex_driver
+interact(dv, sex = "sex_driver")
 
 ```
 
@@ -1889,6 +1906,7 @@ kable(x)
 ```
 
 ## Collisions fog event probes
+## Using proportion of females
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "collisions_fog_overall"
@@ -1899,10 +1917,26 @@ var <- select_vars(dv)
 # fit regression model
 regress(dv)
 
+```
+
+## Using sex of the driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "collisions_fog_overall"
+
+# select IVs
+var <- select_vars(dv, sex = TRUE)
+
+# fit regression model
+regress(dv, sex = TRUE)
+
+# fit regression with interactions bw comms components and sex_driver
+interact(dv, sex = "sex_driver")
 
 ```
 
 ## Speed fog event probes
+## Using proportion of females
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # set the dv
 dv <- "speed_fog_overall"
@@ -1914,27 +1948,23 @@ var <- select_vars(dv)
 regress(dv)
 
 # fit regression with interactions bw comms components and prop_female
-# interact_female(dv)
+interact(dv)
 
-# interact_sex("collisions_overall")
-# # with sex variable
-# var2 <- select_vars_sex(4) %>% select(-leadership_co_driver, -sit.awareness_driver) # 19 drivers missing situation awareness data so removed
-# 
-# # mean center IVs
-# var2_std <- var2 %>% 
-#   mutate(sex_driver = factor(sex_driver)) %>%
-#   mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
-# 
-# psych::describe(var2_std)
-# 
-# # regression without interactions
-# fit2 <- lm(vars$speed_overall ~ .,
-#            data = var2_std)
-# 
-# summary(fit2)
-# ols_correlations(fit2)
+```
 
-# interact_sex("collisions_overall")
+## Using sex of the driver
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# set the dv
+dv <- "speed_fog_overall"
+
+# select IVs
+var <- select_vars(dv, sex = TRUE)
+
+# fit regression model
+regress(dv, sex = TRUE)
+
+# fit regression with interactions bw comms components and sex_driver
+interact(dv, sex = "sex_driver")
 
 ```
 
