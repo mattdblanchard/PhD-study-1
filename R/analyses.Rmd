@@ -105,6 +105,38 @@ map(name, function(i) {
   paste0(i, " = ", round(psych::alpha(x)$total$raw_alpha, 2))
 })
 
+# save distribution plots for manuscript
+# library(cowplot)
+# 
+# a <- vars %>% 
+#   ggplot(aes(x = collisions_overall)) +
+#   geom_histogram(binwidth = 35, fill = "white", colour = "black") +
+#   scale_y_continuous(breaks = seq(0, 14, 2), limits = c(0, 14)) +
+#   # scale_x_continuous(breaks = seq(0, 600, 200), limits = c(0, 650)) +
+#   labs(y = "Frequency", x = "Collisions") +
+#   theme_classic()
+# 
+# b <- vars %>% 
+#   ggplot(aes(x = speed_overall)) +
+#   geom_histogram(binwidth = .5, fill = "white", colour = "black") +
+#   scale_y_continuous(breaks = seq(0, 8, 2), limits = c(0, 8)) +
+#   scale_x_continuous(breaks = seq(4, 12, 2), limits = c(4, 12)) +
+#   labs(y = "", x = "Speed") +
+#   theme_classic()
+# 
+# c <- vars %>% 
+#   ggplot(aes(x = distance_overall)) +
+#   geom_histogram(binwidth = 400, fill = "white", colour = "black") +
+#   scale_y_continuous(breaks = seq(0, 14, 2), limits = c(0, 14)) +
+#   scale_x_continuous(breaks = seq(10000, 18000, 2000), limits = c(10000, 18000)) +
+#   labs(y = "Frequency", x = "Distance") +
+#   theme_classic()
+# 
+# p <- plot_grid(a,b,c, ncol = 2, labels = c("A", "B", "C"), 
+#                label_fontface = "bold", label_size = 12)
+# 
+# ggsave(here("output/sim_metric_distributions.png"))
+
 ```
 
 ## Fog-free periods
@@ -221,6 +253,11 @@ tmp3 <- descriptives(x) %>%
 
 # print together in single table
 kable(bind_cols(tmp1, tmp2, tmp3))
+
+# save descriptives
+# bind_cols(tmp1, tmp2, tmp3) %>% 
+#   mutate_if(is.numeric, round, 2) %>% 
+#   write_csv(here("output/psych_descriptives.csv"))
 
 # overall distribution plots
 o %>% 
@@ -1422,19 +1459,42 @@ select_vars <- function(dv, sex = FALSE) {
 
 
 # function to fit regression model, and run diagnostics for overall simulation-derived metrics
-regress <- function(dv, sex = FALSE) {
+regress <- function(dv, sex = FALSE, comm = FALSE) {
   # print dv name
   print(paste0("DV = ", dv))
   n <- names(var)
   
-  if(sex == FALSE) {
+  if(all(comm == TRUE, sex == FALSE)) {
+    comm_var <- n[n %in% c("eng_fl_co_driver", "eng_fl_driver")]
+    n <- n[!n %in% c("eng_fl_co_driver", "eng_fl_driver")]
+    
+    # make sex a factor and standardise other variables  
+    if (comm_var == "eng_fl_driver") {
+      std_var <- var %>%
+        mutate(eng_fl_driver = factor(eng_fl_driver)) %>%
+        mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+    } else if (comm_var == "eng_fl_co_driver") {
+      std_var <- var %>%
+        mutate(eng_fl_co_driver = factor(eng_fl_co_driver)) %>%
+        mutate_if(is.numeric, scale, center=TRUE, scale=TRUE)
+    }
+    
+    print(psych::describe(std_var))
+    
+    # create regression formula
+    fm <- as.formula(paste0("vars$", dv, " ~ ", paste0("scale(", n, ")", collapse = " + "), " + ", comm_var))
+    
+    # fit model
+    f <- lm(fm, data = std_var)
+    
+  } else if(all(sex == FALSE, comm == FALSE)) {
     # create regression formula
     fm <- as.formula(paste0("vars$", dv, " ~ ", paste("scale(", n, ")", collapse = " + ")))
     
     # fit model
     f <- lm(fm, data = var)
     
-  } else if(sex == TRUE) {
+  } else if(all(sex == TRUE, comm == FALSE)) {
     sex_var <- n[n %in% c("sex_driver", "sex_co_driver")]
     n <- n[!n %in% c("sex_driver", "sex_co_driver")]
     
@@ -1504,7 +1564,7 @@ regress <- function(dv, sex = FALSE) {
   
   # print correlation plot
   print(p)
-  
+
   # check for multicollinearity
   if (length(var) > 1) {
     print(omcdiag(vars %>% select(names(var)), vars %>% select(dv)))
@@ -1682,7 +1742,7 @@ dv <- "helpful_exchange"
 var <- select_vars(dv)
 
 # fit regression model
-regress(dv)
+regress(dv, comm = TRUE)
 
 ```
 
@@ -1695,7 +1755,7 @@ dv <- "terrible_codriver"
 var <- select_vars(dv)
 
 # fit regression model
-regress(dv)
+regress(dv, comm = TRUE)
 
 ```
 
@@ -1945,7 +2005,7 @@ dv <- "speed_fog_overall"
 var <- select_vars(dv)
 
 # fit regression model
-regress(dv)
+regress(dv, comm = TRUE)
 
 # fit regression with interactions bw comms components and prop_female
 interact(dv)
