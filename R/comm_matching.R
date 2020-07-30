@@ -2,6 +2,22 @@
 # and resolves any disagreement over how comms should be coded. We use the final agreed coding 
 # as an instructive guide for the interns
 
+# interrater reliability --------------------------------------------------
+library(tidyverse)
+library(irr)
+
+d <- read_csv("data/comm_coding_files/comm_matching/interrater_data.csv") %>% 
+  mutate(EventB = ifelse(EventB == "Frustration [F]", 
+                         "Frustration/Anxiety/Surprise [F]", EventB)) %>% 
+  select(-contains("Time"))
+
+agree(d)
+
+kappam.fleiss(d, detail = T)
+
+
+
+# original code -----------------------------------------------------------
 library(tidyverse)
 library(stringr)
 
@@ -79,7 +95,7 @@ data3
 
 ###Fenella Check
 
-fdata <- read_csv("../CommCodingTest_Fenella.csv")
+fdata <- read_csv("data/comm_coding_files/comm_matching/CommCodingTest_Fenella.csv")
 
 fdata$EventMML <- fdata$EventMML %>% 
   str_replace("Frustration", "Frustration/Anxiety/Surprise")
@@ -120,9 +136,9 @@ table(FUnique$EventF)
 table(FMissed$EventMML)
 
 
-###Fenella Check
+###Ben Check
 
-bdata <- read_csv("../CommCodingTest_Ben.csv")
+bdata <- read_csv("data/comm_coding_files/comm_matching/CommCodingTest_Ben.csv")
 
 #bdata$EventMML <- bdata$EventMML %>% 
 #  str_replace("Frustration", "Frustration/Anxiety/Surprise")
@@ -169,9 +185,9 @@ table(bMissed$EventMML)
 
 520-115
 
-###Fenella Check
+### Vivian Check
 
-vdata <- read_csv("../CommCodingTest_Vivian.csv")
+vdata <- read_csv("data/comm_coding_files/comm_matching/CommCodingTest_Vivian.csv")
 
 #bdata$EventMML <- bdata$EventMML %>% 
 #  str_replace("Frustration", "Frustration/Anxiety/Surprise")
@@ -274,7 +290,7 @@ table(bMissed$EventMML)
 #Dan
 
 
-ddata <- read_csv("../CommCodingTest_Dan.csv")
+ddata <- read_csv("data/comm_coding_files/comm_matching/CommCodingTest_Dan.csv")
 
 colnames(ddata) <- c("EventMML", "TimeMML", "EventD", "TimeD")
 
@@ -348,3 +364,10 @@ collateddata %>%
   geom_bar(stat = "identity")+
   facet_wrap(~ Event)
   
+
+
+
+
+
+
+

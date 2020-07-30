@@ -1,0 +1,337 @@
+---
+title: "Strategy and Comms Coding Analyses (N=40)"
+author: "Matt Blanchard"
+csl: apa-5th-edition.csl
+output: 
+  pdf_document: 
+    keep_tex: yes
+    number_sections: TRUE
+header-includes:
+    - \usepackage{caption}
+    - \captionsetup{labelsep = newline}
+    - \captionsetup{justification = centering, singlelinecheck = false}
+    - \usepackage{pdflscape}
+    - \newcommand{\blandscape}{\begin{landscape}}
+    - \newcommand{\elandscape}{\end{landscape}}
+    
+---
+
+```{R echo = FALSE, results = "hide", message = FALSE}
+
+options(scipen = 1, digits = 2)
+
+# load packages
+packages <- c("tidyverse", "knitr", "kableExtra", "GGally", "naniar", "here", "psych")
+purrr::map(packages, library, character.only = TRUE)
+
+# load functions for pca
+source(here("R/pca_functions.R"))
+
+# # load data
+d <- read_csv(here("data/200730_strategy_comms_data.csv"))
+
+# # to load from original data sets
+# # comms data
+# com <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
+#   filter(!team %in% c("17080712_1", "17080810_1")) %>% 
+#   select(-terrible_codriver, -inconsistent_codriver, -helpful_exchange)
+# 
+# # strategy data
+# d <- read_csv(here("data/200715_StratData.csv")) %>% 
+#   rename(team = Team) %>% 
+#   select(team, MidIns_Duration, MidNon_Duration, NormIns_Duration, 
+#          NormNon_Duration, OppIns_Duration, OppNon_Duration) %>% 
+#   filter(team %in% com$team) %>% 
+#   filter(MidIns_Duration < 40)
+#   
+# # merge
+# d <- d %>% left_join(com, by = "team")
+  
+```
+
+# PCA on Strategy Variables
+## Correlations between variables
+```{R echo = FALSE, message = FALSE}
+# select variables
+x <- d %>% select(MidIns_Duration, MidNon_Duration, NormIns_Duration, 
+         NormNon_Duration, OppIns_Duration, OppNon_Duration)
+
+# print correlations
+corstarsl(x) %>% 
+  kable(booktabs = T, caption = "Correlations between variables") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+```{R echo = FALSE, message = FALSE}
+# Would need to map strategy behaviours to each lap to calculate reliability for each strategy variable
+
+# reliability
+# psych::alpha(x)$total$raw_alpha %>% round(2)
+
+```
+
+## KMO and Bartlett's Test of Spherecity
+```{R echo = FALSE, message = FALSE}
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+kmo <- data.frame(KMO = round(KMO(cor(x, use="pairwise.complete.obs"))$MSA,2))
+
+kmo %>% 
+  kable(booktabs = T, caption = "KMO: Measure of sampling adequacy") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+
+# Bartlett's Test of Spherecity
+data.frame(cortest.bartlett(cor(x, use="pairwise.complete.obs"), n = 40)) %>% 
+  mutate(p.value = ifelse(p.value < .001, "<.001", p.value)) %>% 
+kable(booktabs = T, caption = "Bartletts test of spherecity") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+## Scree plot
+```{R echo = FALSE, message = FALSE}
+# scree plot
+scree(x)
+
+```
+
+## PCA results
+```{R echo = FALSE, message = FALSE}
+# 2-component PCA
+n_comp <- 2
+rotate_method <- "promax"
+score_method <- "Bartlett"
+
+fit <- principal(x, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# # save component scores as dataframe
+# pca_scores <- data.frame(fit$scores) %>% 
+#   rename(hesitant_driving = RC1, risky_driving = RC2)
+# 
+# # add component scores to d
+# d <- d %>% bind_cols(pca_scores)
+
+```
+
+PC1 = hesitant driving  
+PC2 = risky driving
+
+\newpage
+# PCA on Communication Variables
+Due to the small sample size (N=40) we will conduct PCA separately for positive and negative factors.  
+
+## Reliability for each communication variable
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# reliability for each comms variable
+n <- c("co_info_help_[1-5]", "co_info_harm_[1-5]", "co_instruct_help_[1-5]", 
+       "co_instruct_harm_[1-5]", "co_question_[1-5]", "co_informs_[1-5]", 
+       "co_redundant_[1-5]", "drive_informs_[1-5]", "drive_question_[1-5]", 
+       "drive_frust_[1-5]")
+
+nested <- d %>% 
+  select(team, matches(paste(n, collapse = "|")), -matches("ratio")) %>%
+  pivot_longer(names_to = "Variable", values_to = "val", cols = -team) %>% 
+  mutate(lap = str_extract(Variable, "[1-5]"),
+         Variable = str_remove(Variable, "_[1-5]")) %>% 
+  pivot_wider(names_from = lap, values_from = val) %>% 
+  select(-team) %>% 
+  nest(data = -Variable)
+
+nested %>% 
+  mutate(alpha = map(data, ~ alpha(.x)$total$raw_alpha)) %>% 
+  unnest(alpha) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  select(-data) %>% 
+  kable(booktabs = T, caption = "Reliability") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+## PCA for positive communication variables only
+### Correlations between variables
+```{R echo = FALSE, message = FALSE}
+# select variables
+x <- d %>% 
+  select(co_info_help_overall, co_instruct_help_overall, co_question_overall, drive_question_overall, drive_informs_overall)
+
+# x <- d %>% 
+#   select(co_info_harm_overall, co_instruct_harm_overall, co_redundant_overall, drive_frust_overall)
+
+# print correlations
+corstarsl(x) %>% 
+  kable(booktabs = T, caption = "Correlations between variables") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+### KMO and Bartlett's Test of Spherecity
+```{R echo = FALSE, message = FALSE}
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+kmo <- data.frame(KMO = round(KMO(cor(x, use="pairwise.complete.obs"))$MSA,2))
+
+kmo %>% 
+  kable(booktabs = T, caption = "KMO: Measure of sampling adequacy") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+
+# Bartlett's Test of Spherecity
+data.frame(cortest.bartlett(cor(x, use="pairwise.complete.obs"), n = 40)) %>% 
+   mutate(p.value = ifelse(p.value < .001, "<.001", p.value)) %>% 
+kable(booktabs = T, caption = "Bartletts test of spherecity") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+### Scree plot
+```{R echo = FALSE, message = FALSE}
+# scree plot
+scree(x)
+
+```
+
+### PCA results
+```{R echo = FALSE, message = FALSE}
+# 1-component PCA
+n_comp <- 1
+rotate_method <- "promax"
+score_method <- "Bartlett"
+
+fit <- principal(x, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# # save component scores as dataframe
+# pca_scores <- data.frame(fit$scores) %>% 
+#   rename(helpful_exchange = PC1)
+# 
+# # add component scores to d
+# d <- d %>% bind_cols(pca_scores)
+
+```
+
+PC1 = helpful exchange  
+
+\newpage
+## PCA for negative communication variables only
+### Correlations between variables
+```{R echo = FALSE, message = FALSE}
+# select variables
+x <- d %>%
+  select(co_info_harm_overall, co_instruct_harm_overall, co_redundant_overall, drive_frust_overall)
+
+# print correlations
+corstarsl(x) %>% 
+  kable(booktabs = T, caption = "Correlations between variables") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+### KMO and Bartlett's Test of Spherecity
+```{R echo = FALSE, message = FALSE}
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+kmo <- data.frame(KMO = round(KMO(cor(x, use="pairwise.complete.obs"))$MSA,2))
+
+kmo %>% 
+  kable(booktabs = T, caption = "KMO: Measure of sampling adequacy") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+
+# Bartlett's Test of Spherecity
+data.frame(cortest.bartlett(cor(x, use="pairwise.complete.obs"), n = 40)) %>% 
+   mutate(p.value = ifelse(p.value < .001, "<.001", p.value)) %>% 
+kable(booktabs = T, caption = "Bartletts test of spherecity") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+### Scree plot
+```{R echo = FALSE, message = FALSE}
+# scree plot
+scree(x)
+
+```
+
+### PCA results
+```{R echo = FALSE, message = FALSE}
+# 1-component PCA
+n_comp <- 1
+rotate_method <- "promax"
+score_method <- "Bartlett"
+
+fit <- principal(x, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# # save component scores as dataframe
+# pca_scores <- data.frame(fit$scores) %>% 
+#   rename(harmful_codriver = PC1)
+# 
+# # add component scores to d
+# d <- d %>% bind_cols(pca_scores)
+
+```
+
+PC1 = harmful codriver
+
+\newpage
+# Strategy and Communication Factors Relationships
+## Correlations with simulation derived performance metrics
+```{R echo = FALSE, message = FALSE}
+corstarsl(d %>% select(helpful_exchange, harmful_codriver, hesitant_driving, risky_driving, collisions_overall, speed_overall, distance_overall_deviation)) %>% 
+  kable(booktabs = T, caption = "Correlations with performance metrics") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+\newpage
+## Correlations with driver's psychological variables
+```{R echo = FALSE, message = FALSE}
+corstarsl(d %>% select(helpful_exchange, harmful_codriver, hesitant_driving, risky_driving, driving_years:neuroticism)) %>% 
+  kable(booktabs = T, caption = "Correlations with driver's psychological variables") %>%
+  kable_styling(latex_options = "scale_down")
+
+```
+
+\newpage
+## Correlations with codriver's psychological variables
+```{R echo = FALSE, message = FALSE}
+corstarsl(d %>% select(helpful_exchange, harmful_codriver, hesitant_driving, risky_driving, driving_years_drone:neuroticism_drone)) %>% 
+  kable(booktabs = T, caption = "Correlations with codriver's psychological variables") %>%
+  kable_styling(latex_options = "scale_down")
+
+```
+
+\newpage
+## Correlations with driver's NASA-TLX
+```{R echo = FALSE, message = FALSE}
+corstarsl(d %>% select(helpful_exchange, harmful_codriver, hesitant_driving, risky_driving, effort:temporal_demand)) %>% 
+  kable(booktabs = T, caption = "Correlations with driver's NASA-TLX") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```
+
+
+## Correlations with codriver's NASA-TLX
+```{R echo = FALSE, message = FALSE}
+corstarsl(d %>% select(helpful_exchange, harmful_codriver, hesitant_driving, risky_driving, effort_drone:temporal_demand_drone)) %>% 
+  kable(booktabs = T, caption = "Correlations with codriver's NASA-TLX") %>%
+  kable_styling(font_size = 6, latex_options = "HOLD_position")
+
+```

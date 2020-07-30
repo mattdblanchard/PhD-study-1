@@ -11,8 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ``` {r load, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
 library(tidyverse)
-library(corrr)
 library(here)
+library(corrr)
 library(knitr)
 library(corrplot)
 library(psych)
@@ -108,34 +108,34 @@ map(name, function(i) {
 # save distribution plots for manuscript
 # library(cowplot)
 # 
-# a <- vars %>% 
-#   ggplot(aes(x = collisions_overall)) +
-#   geom_histogram(binwidth = 35, fill = "white", colour = "black") +
-#   scale_y_continuous(breaks = seq(0, 14, 2), limits = c(0, 14)) +
-#   # scale_x_continuous(breaks = seq(0, 600, 200), limits = c(0, 650)) +
-#   labs(y = "Frequency", x = "Collisions") +
-#   theme_classic()
-# 
-# b <- vars %>% 
-#   ggplot(aes(x = speed_overall)) +
-#   geom_histogram(binwidth = .5, fill = "white", colour = "black") +
-#   scale_y_continuous(breaks = seq(0, 8, 2), limits = c(0, 8)) +
-#   scale_x_continuous(breaks = seq(4, 12, 2), limits = c(4, 12)) +
-#   labs(y = "", x = "Speed") +
-#   theme_classic()
-# 
-# c <- vars %>% 
-#   ggplot(aes(x = distance_overall)) +
-#   geom_histogram(binwidth = 400, fill = "white", colour = "black") +
-#   scale_y_continuous(breaks = seq(0, 14, 2), limits = c(0, 14)) +
-#   scale_x_continuous(breaks = seq(10000, 18000, 2000), limits = c(10000, 18000)) +
-#   labs(y = "Frequency", x = "Distance") +
-#   theme_classic()
-# 
-# p <- plot_grid(a,b,c, ncol = 2, labels = c("A", "B", "C"), 
-#                label_fontface = "bold", label_size = 12)
-# 
-# ggsave(here("output/sim_metric_distributions.png"))
+a <- vars %>%
+  ggplot(aes(x = collisions_overall)) +
+  geom_histogram(binwidth = 35, fill = "white", colour = "black") +
+  scale_y_continuous(breaks = seq(0, 14, 2), limits = c(0, 14)) +
+  # scale_x_continuous(breaks = seq(0, 600, 200), limits = c(0, 650)) +
+  labs(y = "Frequency", x = "Collisions") +
+  theme_classic()
+
+b <- vars %>%
+  ggplot(aes(x = speed_overall)) +
+  geom_histogram(binwidth = .5, fill = "white", colour = "black") +
+  scale_y_continuous(breaks = seq(0, 8, 2), limits = c(0, 8)) +
+  scale_x_continuous(breaks = seq(4, 12, 2), limits = c(4, 12)) +
+  labs(y = "", x = "Speed") +
+  theme_classic()
+
+c <- vars %>%
+  ggplot(aes(x = distance_overall)) +
+  geom_histogram(binwidth = 400, fill = "white", colour = "black") +
+  scale_y_continuous(breaks = seq(0, 14, 2), limits = c(0, 14)) +
+  scale_x_continuous(breaks = seq(10000, 18000, 2000), limits = c(10000, 18000)) +
+  labs(y = "Frequency", x = "Distance travelled") +
+  theme_classic()
+
+p <- cowplot::plot_grid(a,b,c, ncol = 2, labels = c("A", "B", "C"),
+               label_fontface = "bold", label_size = 12)
+
+# ggsave(here("output/sim_metric_distributions.png"), width = 7, height = 5)
 
 ```
 
@@ -1403,6 +1403,144 @@ data.frame(component = c("inconsistent_codriver", "terrible_codriver", "helpful_
 
 ```
 
+# reduce NASA-TLX variables to smaller number of components
+``` {r echo=FALSE, message=FALSE, warning=FALSE}
+
+# select nasa variables
+pca1 <- vars %>% dplyr::select(effort:temporal_demand)
+pca2 <- vars %>% dplyr::select(effort_other:temporal_demand_other)
+pca3 <- vars %>% dplyr::select(effort_drone:temporal_demand_drone)
+pca4 <- vars %>% dplyr::select(effort_other_drone:temporal_demand_other_drone)
+
+pca <- c("pca1", "pca2", "pca3", "pca4")
+
+pca_scores <- map(pca, function(i) {
+# create the correlation matrix for PCA so we know how it was done (e.g., how missing values were treated)
+cor_pca <- star_matrix(get(i))
+
+# print correlations
+kable(cor_pca)
+
+# Visualise correlations to see if variables appear to cluster
+corrplot(cor(get(i), use="complete.obs"), order = "hclust", tl.col='black', tl.cex=.75)
+
+
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+print(KMO(cor(get(i), use="complete.obs")))
+
+# Bartlett's test of spherecity
+print("Bartletts test of spherecity")
+print(data.frame(cortest.bartlett(cor(get(i), use="complete.obs"), n = 55)))
+
+# 3-component PCA
+n_comp <- 2
+rotate_method <- "promax"
+score_method <- "Bartlett"
+
+fit <- principal(get(i), rotate = rotate_method, nfactors = n_comp, 
+                 method = score_method, scores = TRUE, n.obs = 55)
+
+# communalities
+x <- data.frame(communalities = round(fit$communality, 2))
+
+kable(x)
+
+
+# variance explained
+x <- data.frame(component = 1:nrow(x),
+                eigen = fit$values,
+                prop_var = c(fit$Vaccounted[2,c(1:n_comp)], rnorm(nrow(x)-n_comp, 0, 0)),
+                cum_var = c(fit$Vaccounted[3,c(1:n_comp)], rnorm(nrow(x)-n_comp, 0, 0)),
+                rotation_SS_load = c(fit$Vaccounted[1,c(1:n_comp)], rnorm(nrow(x)-n_comp, 0, 0))) %>% 
+  round(2)
+
+x[x == 0] <- ""
+
+kable(x)
+
+# Scree plot
+p <- data.frame(component = 1:nrow(x),
+                eigen = fit$values)
+
+p %>% ggplot(aes(x = component, y = eigen)) +
+  geom_line() + geom_point() +
+  scale_x_continuous(breaks = 1:nrow(x)) +
+  theme_minimal() +
+  labs(title = "Scree plot") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+# pattern matrix
+load <- data.frame(var = rownames(fit$loadings),
+                   PC1 = round(fit$loadings[1:nrow(x)], 2),
+                   PC2 = round(fit$loadings[(1+nrow(x)):(nrow(x)*2)], 2)) %>% 
+  mutate(PC1 = ifelse(PC1 < .3 & PC1 > -.3, "", PC1),
+         PC2 = ifelse(PC2 < .3 & PC2 > -.3, "", PC2)) %>% 
+  arrange(desc(PC1), desc(PC2))
+
+kable(load)
+
+
+
+
+if (i == "pca1") {
+  # Component correlations matrix
+  rownames(fit$r.scores) <- c("positive_nasa", "negative_nasa")
+  colnames(fit$r.scores) <- c("positive_nasa", "negative_nasa")
+
+  round(fit$r.scores,2)
+
+  # save component scores as dataframe
+  pca_scores <- data.frame(fit$scores) %>%
+    rename(positive_nasa_driver = RC1, negative_nasa_driver = RC2)
+
+} else if (i == "pca2") {
+  # Component correlations matrix
+  rownames(fit$r.scores) <- c("positive_nasa", "negative_nasa")
+  colnames(fit$r.scores) <- c("positive_nasa", "negative_nasa")
+
+  round(fit$r.scores,2)
+
+  # save component scores as dataframe
+  pca_scores <- data.frame(fit$scores) %>%
+    rename(positive_nasa_driver_other = RC1, negative_nasa_driver_other = RC2)
+
+} else if (i == "pca3") {
+# Component correlations matrix
+rownames(fit$r.scores) <- c("negative_nasa", "positive_nasa")
+colnames(fit$r.scores) <- c("negative_nasa", "positive_nasa")
+
+round(fit$r.scores,2)
+
+
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>%
+  rename(negative_nasa_drone = RC1, positive_nasa_drone = RC2)
+
+} else if (i == "pca4") {
+  # Component correlations matrix
+  rownames(fit$r.scores) <- c("negative_nasa", "positive_nasa")
+  colnames(fit$r.scores) <- c("negative_nasa", "positive_nasa")
+
+  round(fit$r.scores,2)
+
+
+  # save component scores as dataframe
+  pca_scores <- data.frame(fit$scores) %>%
+    rename(negative_nasa_drone_other = RC1, positive_nasa_drone_other = RC2)
+  
+  }
+})
+
+
+# append component scores to dataset
+pca_scores <- bind_cols(pca_scores)
+
+vars <- cbind(vars, pca_scores)
+
+```
+
+
 
 # Regression analyses
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
@@ -1619,7 +1757,11 @@ interact <- function(dv, sex = "prop_female") {
 # eng_fl 1 == "english" 0 == "other"
 
 x <- vars %>% 
-  select(sim_metrics, comms_fac, age_co_driver:sex_driver, prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone, -contains("aus_years"), -contains("dic_use"))
+  select(sim_metrics, comms_fac, age_co_driver:sex_driver, prop_female,
+         driving_years:neuroticism, driving_years_drone:neuroticism_drone, 
+         contains("nasa"), -contains("aus_years"), -contains("dic_use"))
+
+
 
 kable(star_matrix(x))
 
@@ -1630,7 +1772,9 @@ kable(star_matrix(x))
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 # select variables and create correlation matrix
 x <- vars %>% 
-  select(comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
+  select(comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, 
+         driving_years:neuroticism, driving_years_drone:neuroticism_drone, 
+         contains("nasa")) %>% 
   psych::corr.test() 
 
 x <- sig_corrs(x, comms_fac)
@@ -1762,6 +1906,7 @@ regress(dv, comm = TRUE)
 ## Predicting the driving-simulation metrics
 ## Which variables sig. correlate with the driving-simulation metrics overall?
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
+# include nasa factors?
 x <- vars %>% 
   select(sim_metrics, comms_fac, age_co_driver:aus_born_driver, eng_fl_co_driver:prop_female, driving_years:neuroticism, driving_years_drone:neuroticism_drone) %>% 
   psych::corr.test() 

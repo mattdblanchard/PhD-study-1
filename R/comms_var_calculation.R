@@ -176,10 +176,9 @@ x <- scale %>%
 round(psych::alpha(x)$total$raw_alpha, 2)
 })
 
-
 # join comms coding and teamwork scale data
 coding <- comms %>% left_join(teamwork, by = "team")
-
+coding %>% filter(team == "1703215")
 
 # read sim data
 # d <- read_csv("data/190205_master_data.csv")
