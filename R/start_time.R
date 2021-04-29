@@ -10,7 +10,7 @@ d <- lapply(files, function(i) {
 
 # bind the rows to a single tibble, rename columns and 
 # clean Participant values so they are consistent with who_coded.csv
-  
+
 d[[29]] <- d[[29]] %>%
   rename(X6 = X5, X5 = X4, X4 = X3, X3 = X2, X2 = X1) %>%
   mutate(X1 = 1:n())

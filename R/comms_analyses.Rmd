@@ -13,10 +13,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ``` {r load, include=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
-library(tidyverse)
-library(corrr)
-library(here)
-library(knitr)
+packages <- c("tidyverse", "corrr", "here", "knitr")
+purrr::map(packages, library, character.only = TRUE)
 
 # read sim variables
 vars <- read_csv(here("data/200227_comms_efa_vars.csv")) %>% 
@@ -160,7 +158,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, drive_total_overall, co_total_overall)
 
-x[x < .270] <- "-"
+x[x < .270] <- NA
 
 kable(x)
 
@@ -183,7 +181,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, co_total_1:drive_total_5)
 
-x[x < .270] <- "-"
+x[x < .270] <- NA
 
 kable(x)
 
@@ -197,7 +195,7 @@ x <- vars %>%
   select(co_info_help_overall:sit.awareness_driver, -contains("ratio")) %>% 
   correlate()
 
-x[x < .5] <- "-"
+x[x < .5] <- NA
 
 kable(x)
 
@@ -371,7 +369,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, age_driver:neuroticism)
 
-x[x < .270] <- "-"
+x[x < .270] <- NA
 
 kable(x)
 
@@ -391,7 +389,7 @@ kable(x)
 <!--   bind_cols(col_names) %>%  -->
 <!--   select(rowname, age_driver:neuroticism) -->
 
-<!-- x[x < .270] <- "-" -->
+<!-- x[x < .270] <- NA -->
 
 <!-- kable(x) -->
 <!-- ``` -->
@@ -409,7 +407,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, effort:temporal_demand)
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -428,7 +426,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, effort_other:temporal_demand_other)
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -447,7 +445,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, age_co_driver:neuroticism_drone)
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -466,7 +464,7 @@ kable(x)
 <!--   bind_cols(col_names) %>%  -->
 <!--   select(rowname, age_co_driver:neuroticism_drone) -->
 
-<!-- x[x < .270] <- "-" -->
+<!-- x[x < .270] <- NA -->
 
 <!-- kable(x) -->
 <!-- ``` -->
@@ -485,7 +483,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, effort_drone:temporal_demand_drone)
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -503,7 +501,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, effort_other_drone:temporal_demand_other_drone)
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -665,7 +663,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, contains("collisions"), contains("speed"))
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -684,7 +682,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, contains("collisions"), contains("speed"))
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -703,7 +701,7 @@ kable(x)
 <!--   bind_cols(col_names) %>%  -->
 <!--   select(rowname, contains("collisions"), contains("speed")) -->
 
-<!-- x[x < .270] <- "-" -->
+<!-- x[x < .270] <- NA -->
 
 <!-- kable(x) -->
 <!-- ``` -->
@@ -723,7 +721,7 @@ kable(x)
 <!--   bind_cols(col_names) %>%  -->
 <!--   select(rowname, contains("collisions"), contains("speed")) -->
 
-<!-- x[x < .270] <- "-" -->
+<!-- x[x < .270] <- NA -->
 
 <!-- kable(x) -->
 <!-- ``` -->
@@ -743,7 +741,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, contains("collisions"), contains("speed"))
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -762,7 +760,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, contains("collisions"), contains("speed"))
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -782,7 +780,7 @@ kable(x)
 <!--   bind_cols(col_names) %>%  -->
 <!--   select(rowname, contains("collisions"), contains("speed")) -->
 
-<!-- x[x < .270] <- "-" -->
+<!-- x[x < .270] <- NA -->
 
 <!-- kable(x) -->
 <!-- ``` -->
@@ -801,7 +799,7 @@ kable(x)
 <!--   bind_cols(col_names) %>%  -->
 <!--   select(rowname, contains("collisions"), contains("speed")) -->
 
-<!-- x[x < .270 & x > -.270] <- "-" -->
+<!-- x[x < .270 & x > -.270] <- NA -->
 
 <!-- kable(x) -->
 <!-- ``` -->
@@ -819,7 +817,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, contains("deviation"))
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -838,7 +836,7 @@ x <- round(x[,-1],2) %>%
   bind_cols(col_names) %>% 
   select(rowname, contains("collisions"), contains("distance"))
 
-x[x < .270 & x > -.270] <- "-"
+x[x < .270 & x > -.270] <- NA
 
 kable(x)
 ```
@@ -848,7 +846,7 @@ kable(x)
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 x <- vars %>% 
   select(comms_fac, leadership:sit.awareness_driver,
-    driving_years:neuroticism, driving_years_drone:neuroticism_drone, age_co_driver:prop_female,
+    driving_years:neuroticism, effort:temporal_demand, driving_years_drone:neuroticism_drone, effort_drone:temporal_demand_drone, age_co_driver:prop_female,
                 -contains("ratio"),
                 collisions_overall, speed_overall, distance_overall_deviation) %>% 
   correlate() %>% focus(collisions_overall, speed_overall, distance_overall_deviation) %>% 
@@ -860,7 +858,7 @@ x[x > -.270 & x < .270] <- NA
 
 name <- names(x)[-1]
 
-lapply(name, function(i) {
+map(name, function(i) {
   x <- x %>% select(rowname, i) %>% na.omit()
   kable(x)
 })
@@ -922,9 +920,9 @@ regress <- function(dv) {
   print(p)
 
   # check for multicollinearity
-  print(omcdiag(vars %>% select(n), vars %>% select(dv)))
-
-  print(imcdiag(vars %>% select(n), vars %>% select(dv)))
+  print(mctest::omcdiag(f))
+  
+  print(mctest::imcdiag(f))
    
 }
 
@@ -1071,7 +1069,7 @@ regress("distance_overall_deviation")
 ``` {r echo=FALSE, message=FALSE, warning=FALSE}
 x <- vars %>% 
   select(comms_fac, leadership:sit.awareness_driver,
-         driving_years:neuroticism, driving_years_drone:neuroticism_drone, age_co_driver:prop_female,
+         driving_years:neuroticism, effort:temporal_demand, driving_years_drone:neuroticism_drone, effort_drone, age_co_driver:prop_female,
          -contains("ratio"),
          collisions_fog_overall, collisions_no_fog_overall, speed_fog_overall, speed_no_fog_overall,
          distance_fog_overall, distance_no_fog_overall) %>% 

@@ -10,8 +10,8 @@ source("R/start_time.R")
 
 # combine lap start times with comms coding
 d <- data %>% 
-  left_join(start, "Participant") %>% 
-  group_by(team) %>% 
+  left_join(start, by = "Participant") %>% 
+  group_by(Participant) %>% 
   mutate(time = time - start_time)
 
 # check that first comms time is after drive start time

@@ -84,13 +84,13 @@ corstarsl <- function(x){
   rownames(Rnew) <- colnames(x) 
   colnames(Rnew) <- paste(colnames(x), "", sep="") 
   
-  ## remove upper triangle
+  ## remove lower triangle
   Rnew <- as.matrix(Rnew)
-  Rnew[upper.tri(Rnew, diag = TRUE)] <- ""
+  Rnew[lower.tri(Rnew, diag = TRUE)] <- ""
   Rnew <- as.data.frame(Rnew) 
   
   ## remove last column and return the matrix (which is now a data frame)
-  Rnew <- cbind(Rnew[1:length(Rnew)-1])
+  Rnew <- cbind(Rnew[2:length(Rnew)])
   
   Rnew <- Rnew %>% 
     rownames_to_column() %>% 
@@ -104,7 +104,7 @@ corstarsl <- function(x){
   
   # rownames(Rnew) <- renamevarnames(rownames(Rnew))
   rownames(Rnew) <- c(paste0(1:nrow(Rnew), ". ", rownames(Rnew)))
-  colnames(Rnew) <- 1:ncol(Rnew)
+  colnames(Rnew) <- 2:(ncol(Rnew)+1)
   
   return(Rnew) 
 }
