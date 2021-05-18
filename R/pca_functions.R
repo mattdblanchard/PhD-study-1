@@ -22,8 +22,8 @@ var_table <- function() {
   a[a == 0] <- ""
   
   a %>% 
-    kable(booktabs = T, caption = "Variance accounted for by components") %>%
-    kable_styling(font_size = 6, latex_options = "HOLD_position")
+    knitr::kable(booktabs = T, caption = "Variance accounted for by components") %>%
+    kableExtra::kable_styling(font_size = 10, latex_options = "HOLD_position")
 }
 
 # pattern matrix
@@ -38,29 +38,25 @@ pattern_matrix <- function() {
                      PC6 = round(fit$loadings[(1+length(fit$communality)*5):(length(fit$communality)*6)], 2),
                      PC7 = round(fit$loadings[(1+length(fit$communality)*6):(length(fit$communality)*7)], 2),
                      PC8 = round(fit$loadings[(1+length(fit$communality)*7):(length(fit$communality)*8)], 2),
+                     PC9 = round(fit$loadings[(1+length(fit$communality)*8):(length(fit$communality)*9)], 2),
                      h2 = round(fit$communality, 2)) %>% 
-    mutate(PC1 = ifelse(PC1 < .3 & PC1 > -.3, "", PC1),
-           PC2 = ifelse(PC2 < .3 & PC2 > -.3, "", PC2),
-           PC3 = ifelse(PC3 < .3 & PC3 > -.3, "", PC3),
-           PC4 = ifelse(PC4 < .3 & PC4 > -.3, "", PC4),
-           PC5 = ifelse(PC5 < .3 & PC5 > -.3, "", PC5),
-           PC6 = ifelse(PC6 < .3 & PC6 > -.3, "", PC6),
-           PC7 = ifelse(PC7 < .3 & PC7 > -.3, "", PC7),
-           PC8 = ifelse(PC8 < .3 & PC8 > -.3, "", PC8)) %>% 
-    arrange(desc(PC1), desc(PC2), desc(PC3), desc(PC4), desc(PC5), desc(PC6), desc(PC7), desc(PC8)) %>% 
+    pivot_longer(starts_with("PC"), names_to = "pc", values_to = "val") %>% 
+    mutate(val = ifelse(abs(val) < .3, "", val)) %>% 
+    pivot_wider(names_from = pc, values_from = val) %>% 
+    arrange(desc(PC1), desc(PC2), desc(PC3), desc(PC4), desc(PC5), desc(PC6), desc(PC7), desc(PC8), desc(PC9)) %>%
     select(var, PC1:paste0("PC", n_comp), h2)
   
   load %>% 
-    kable(booktabs = T, caption = "Pattern Matrix") %>%
-    kable_styling(font_size = 6, latex_options = "HOLD_position")
+    knitr::kable(booktabs = T, caption = "Pattern Matrix") %>%
+    kableExtra::kable_styling(font_size = 10, latex_options = "HOLD_position")
 }
 
 
 # correlations between components
 pca_cor <- function() {
 round(fit$r.scores,2) %>% 
-  kable(booktabs = T, caption = "Correlations between components") %>%
-  kable_styling(font_size = 6, latex_options = "HOLD_position")
+  knitr::kable(booktabs = T, caption = "Correlations between components") %>%
+  kableExtra::kable_styling(font_size = 10, latex_options = "HOLD_position")
 }
 
 

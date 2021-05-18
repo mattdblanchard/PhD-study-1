@@ -1,3 +1,7 @@
+# This script processes the comms data and computes comms components using PCA
+# it also reduces IVs (not personality) to components for regression analyses
+# then saves the resulting dataset
+
 #Soft Coding Variable Calculation
 
 #Setup Packages
@@ -105,29 +109,25 @@ scale$team[scale$team == "2017081510181249"] <- "17081510_2"
 scale$team[scale$team == "2017081512264852"] <- "17081512_2"
 }
 
-# recode Q1-14 responses to numeric
-{
-  scale[scale == "Never"] <- 1
-  scale[scale == "Rarely"] <- 2
-  scale[scale == "Sometimes"] <- 3
-  scale[scale == "Often"] <- 4
-  scale[scale == "Always"] <- 5
-  }
-
-# calculate vars
-# prepare data
+# recode Q1-14 responses to numeric and
+# prepare data to calculate vars
 scale <- scale %>% 
-  gather(var, val, Q1:Q15) %>% 
-  mutate(val = as.numeric(val),
-         val = ifelse(var %in% c("Q3", "Q4", "Q9", "Q10"), 6 - val, val),
+  pivot_longer(Q1:Q15, names_to = "var", values_to = "val") %>% 
+  mutate(val = ifelse(val == "Never", 1,
+                      ifelse(val == "Rarely", 2,
+                             ifelse(val == "Sometimes", 3,
+                                    ifelse(val == "Often", 4,
+                                           ifelse(val == "Always", 5, val))))),
+         val = as.numeric(val)) %>% 
+  # recode reverse scored Qs
+  mutate(val = ifelse(var %in% c("Q3", "Q4", "Q9", "Q10"), 6 - val, val),
          factor = ifelse(var %in% c("Q1", "Q2", "Q3", "Q4"), "leadership",
                          ifelse(var %in% c("Q5", "Q6", "Q7", "Q8", "Q9", "Q10"), "teamwork",
                                 ifelse(var %in% c("Q11", "Q12", "Q13", "Q14"), "sit.awareness",
                                        ifelse(var == "Q15", "overall", val)))),
          role = ifelse(var %in% c("Q1", "Q3", "Q11", "Q13"), "driver",
                        ifelse(var %in% c("Q2", "Q4", "Q12", "Q14"), "co_driver", NA)))
-
-
+  
 # identified 3 teams with multiple attempts
 # take the first and remove others
 # scale %>% 
@@ -142,7 +142,7 @@ scale <- scale %>%
 teamwork <- scale %>%
   group_by(team, factor) %>% 
   summarise(score = sum(val)) %>% 
-  spread(factor, score)
+  pivot_wider(names_from = factor, values_from = score)
 
 # calculate scores for driver and co-driver items separately
 role <- scale %>%
@@ -178,7 +178,6 @@ round(psych::alpha(x)$total$raw_alpha, 2)
 
 # join comms coding and teamwork scale data
 coding <- comms %>% left_join(teamwork, by = "team")
-coding %>% filter(team == "1703215")
 
 # read sim data
 # d <- read_csv("data/190205_master_data.csv")
@@ -419,12 +418,13 @@ x <- x %>%
 d <- d %>% left_join(x, by = "team")
 
 # join comms vars with main dataset
-coding <- coding %>% left_join(d, by = "team")
+# original was adding d to coding
+vars <- d %>% left_join(coding, by = "team")
 
 # match comms coding to laps and calculate trends for each driver for each variable
 source("R/comm_trends.R")
 
-vars <- coding %>% left_join(comms, by = "team")
+vars <- vars %>% left_join(comms, by = "team")
 
 # match comms coding to fog event overall and per lap
 source("R/fog_comms.R")
@@ -508,51 +508,225 @@ demo <- read_csv("data/demographics.csv") %>%
 
 vars <- vars %>% left_join(demo, by = "team")
 
-# last saved 27 Feb 2020
-vars %>% write_csv("data/200303_comms_vars.csv")
-
-# # save data for SK's SPSS efa script
-# data <- vars %>%
-#   select(team,
-#          co_info_help_overall, co_info_harm_overall, co_instruct_help_overall,
-#          co_instruct_harm_overall, co_redundant_overall, co_question_overall,
-#          drive_question_overall, drive_informs_overall, drive_frust_overall,
-#          co_info_help_no_fog, co_info_harm_no_fog, co_instruct_help_no_fog,
-#          co_instruct_harm_no_fog, co_redundant_no_fog, co_question_no_fog,
-#          drive_question_no_fog, drive_informs_no_fog, drive_frust_no_fog,
-#          co_info_help_fog, co_info_harm_fog, co_instruct_help_fog,
-#          co_instruct_harm_fog, co_redundant_fog, co_question_fog,
-#          drive_question_fog, drive_informs_fog, drive_frust_fog,
-#          driving_years, gaming_time, congruent_errors, congruent_time,
-#          incongruent_errors, incongruent_time, inhibitory_cost, repeat_errors,
-#          repeat_time, switch_errors, switch_time, switch_cost, wm_accuracy,
-#          resilience, gf_accuracy, confidence, bias, discrimination, agreeableness,
-#          conscientiousness, extraversion, intellect, neuroticism, effort,
-#          frustration, mental_demand, performance, physical_demand, temporal_demand, effort_other,
-#          frustration_other, mental_demand_other, performance_other, physical_demand_other,
-#          temporal_demand_other, events_missed_overall, time_taken_overall, distance_overall,
-#          distance_overall_deviation, distance_overall_deviation_abs, collisions_overall, speed_overall)
-# 
-# data[is.na(data)] <- 99999
-# table(is.na(data))
-# table(data == 99999)
-# data %>% write_csv("data/200309_comms_data_4_SK_efa.csv")
+# last saved 13 May 2021
+vars %>% write_csv("data/210513_comms_vars.csv")
 
 
 
+# Comms EFA ---------------------------------------------------------------
+vars <- read_csv("data/210513_comms_vars.csv") %>% 
+  filter(!team %in% c("17080712_1", "17080810_1", "17032215_1", "17081412_1")) # remove 4 outliers documented in paper
+# 17032215_1-g2 = did not complete sim
+# 17081412_1-g2 = major networking error that rendered drone instructions misleading - very high collisions
+
+source("R/pca_functions.R")
+
+# select original comms variables
+pca <- vars %>% dplyr::select(co_info_help_overall:drive_frust_overall, 
+                              -contains("ratio"), -co_total_help_overall, 
+                              -co_total_harm_overall, -co_total_overall)
+
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+KMO(cor(pca, use = "pairwise.complete.obs"))
+
+# Bartlett's test of spherecity
+print("Bartletts test of spherecity")
+print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 54)))
+
+# scree plot
+scree(pca, factors = TRUE)
+# conduct parallel analysis to confirm no. components
+paran::paran(drop_na(pca), iterations = 5000, all = T, graph = T)
+
+# 3-component PCA
+n_comp <- 3
+rotate_method <- "promax" # rotation with kaiser normalization
+score_method <- "Bartlett"
+
+fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>% 
+  rename(inconsistent_codriver_r_three = RC1, terrible_codriver_r_three = RC2, helpful_exchange_r_three = RC3)
+
+# add component scores to d
+vars <- vars %>% bind_cols(pca_scores)
+
+# 2-component PCA
+n_comp <- 2
+
+fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>% 
+  rename(helpful_exchange_r_two = RC1, terrible_codriver_r_two = RC2)
+
+# add component scores to d
+vars <- vars %>% bind_cols(pca_scores)
 
 
-# Need to conduct EFA in SPSS before running final part of script ---------
-d <- read_csv("data/200303_comms_efa_vars.csv")
 
-# add efa factors to data
-# read factor scores for comms vars
-efa <- read_csv("data/200309_comms_efa_spss_n54.csv") %>% 
-  select(team, inconsistent_codriver_no_fog_3fac:terrible_codriver_fog_2fac)
+# Reduce IVs to components ------------------------------------------------
 
-# add comms factors to dataset
-d <- d %>% left_join(efa, by = "team")
+# DRIVER ------------------------------------------------------------------
 
-# last saved 27 Feb 2020
-d %>% write_csv("data/200309_comms_efa_vars.csv")
+# PCA for EF vars ---------------------------------------------------------
+pca <- vars %>% select(matches("congruent"), matches("switch"), matches("repeat"), 
+                     -matches("drone"), -matches("dist"), -switch_cost)
+
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+KMO(cor(pca, use = "pairwise.complete.obs"))
+
+# Bartlett's test of spherecity
+print("Bartletts test of spherecity")
+print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
+
+# scree plot
+scree(pca, factors = TRUE)
+
+# 1-component PCA
+n_comp <- 2
+
+fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>% 
+  rename(ef_time_factor_driver = RC1, ef_errors_factor_driver = RC2)
+
+# add component scores to d
+vars <- vars %>% bind_cols(pca_scores)
+
+
+# PCA for cog vars ---------------------------------------------------------
+pca <- vars %>% select(wm_accuracy, gf_accuracy, confidence)
+
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+KMO(cor(pca, use = "pairwise.complete.obs"))
+
+# Bartlett's test of spherecity
+print("Bartletts test of spherecity")
+print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
+
+# scree plot
+scree(pca, factors = TRUE)
+
+# 1-component PCA
+n_comp <- 1
+
+fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>% 
+  rename(competence_factor_driver = PC1)
+
+# add component scores to d
+vars <- vars %>% bind_cols(pca_scores)
+
+
+# DRONE ------------------------------------------------------------------
+
+# PCA for EF vars ---------------------------------------------------------
+pca <- vars %>% 
+  select(matches("congruent"), matches("switch"), matches("repeat"),
+        -matches("dist"), -switch_cost_drone) %>% 
+  select(matches("drone"))
+
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+KMO(cor(pca, use = "pairwise.complete.obs"))
+
+# Bartlett's test of spherecity
+print("Bartletts test of spherecity")
+print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
+
+# scree plot
+scree(pca, factors = TRUE)
+
+# scree plot suggests 3 components but 2 component model better fit. 
+# Conduct parallel analysis to confirm # components
+# fa.parallel(vars)
+paran::paran(drop_na(pca), iterations = 5000, all = T, graph = T)
+
+# PCA
+n_comp <- 2
+
+fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>% 
+  rename(ef_time_factor_drone = RC1, ef_errors_factor_drone = RC2)
+
+# add component scores to d
+vars <- vars %>% bind_cols(pca_scores)
+
+
+# PCA for cog vars ---------------------------------------------------------
+pca <- vars %>% select(wm_accuracy_drone, gf_accuracy_drone, confidence_drone)
+
+# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+KMO(cor(pca, use = "pairwise.complete.obs"))
+
+# Bartlett's test of spherecity
+print("Bartletts test of spherecity")
+print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 54)))
+
+# scree plot
+scree(pca, factors = TRUE)
+
+# 1-component PCA
+n_comp <- 1
+
+fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+                 method = score_method, scores = TRUE)
+
+# variance explained
+var_table()
+
+# pattern matrix
+pattern_matrix()
+
+# save component scores as dataframe
+pca_scores <- data.frame(fit$scores) %>% 
+  rename(competence_factor_drone = PC1)
+
+# add component scores to d
+vars <- vars %>% bind_cols(pca_scores)
+
+
+# last saved 13 May 2021
+vars %>% write_csv("data/210513_comms_efa_vars.csv")
 
