@@ -581,83 +581,12 @@ vars <- vars %>% bind_cols(pca_scores)
 
 
 # Reduce IVs to components ------------------------------------------------
-
-# DRIVER ------------------------------------------------------------------
-
 # PCA for EF vars ---------------------------------------------------------
-pca <- vars %>% select(matches("congruent"), matches("switch"), matches("repeat"), 
-                     -matches("drone"), -matches("dist"), -switch_cost)
+pca <- vars %>% select(repeat_time, switch_time, congruent_time, incongruent_time,
+                       repeat_time_drone, switch_time_drone, congruent_time_drone, incongruent_time_drone)
 
-# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
-KMO(cor(pca, use = "pairwise.complete.obs"))
-
-# Bartlett's test of spherecity
-print("Bartletts test of spherecity")
-print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
-
-# scree plot
-scree(pca, factors = TRUE)
-
-# 1-component PCA
-n_comp <- 2
-
-fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
-                 method = score_method, scores = TRUE)
-
-# variance explained
-var_table()
-
-# pattern matrix
-pattern_matrix()
-
-# save component scores as dataframe
-pca_scores <- data.frame(fit$scores) %>% 
-  rename(ef_time_factor_driver = RC1, ef_errors_factor_driver = RC2)
-
-# add component scores to d
-vars <- vars %>% bind_cols(pca_scores)
-
-
-# PCA for cog vars ---------------------------------------------------------
-pca <- vars %>% select(wm_accuracy, gf_accuracy, confidence)
-
-# Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
-KMO(cor(pca, use = "pairwise.complete.obs"))
-
-# Bartlett's test of spherecity
-print("Bartletts test of spherecity")
-print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
-
-# scree plot
-scree(pca, factors = TRUE)
-
-# 1-component PCA
-n_comp <- 1
-
-fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
-                 method = score_method, scores = TRUE)
-
-# variance explained
-var_table()
-
-# pattern matrix
-pattern_matrix()
-
-# save component scores as dataframe
-pca_scores <- data.frame(fit$scores) %>% 
-  rename(competence_factor_driver = PC1)
-
-# add component scores to d
-vars <- vars %>% bind_cols(pca_scores)
-
-
-# DRONE ------------------------------------------------------------------
-
-# PCA for EF vars ---------------------------------------------------------
-pca <- vars %>% 
-  select(matches("congruent"), matches("switch"), matches("repeat"),
-        -matches("dist"), -switch_cost_drone) %>% 
-  select(matches("drone"))
+# corstarsl(pca) %>% 
+#   write_csv("output/supp_efa_corrs1.csv")
 
 # Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
 KMO(cor(pca, use = "pairwise.complete.obs"))
@@ -676,6 +605,8 @@ paran::paran(drop_na(pca), iterations = 5000, all = T, graph = T)
 
 # PCA
 n_comp <- 2
+rotate_method <- "promax" # rotation with kaiser normalization
+score_method <- "Bartlett"
 
 fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
                  method = score_method, scores = TRUE)
@@ -688,14 +619,18 @@ pattern_matrix()
 
 # save component scores as dataframe
 pca_scores <- data.frame(fit$scores) %>% 
-  rename(ef_time_factor_drone = RC1, ef_errors_factor_drone = RC2)
+  rename(ef_time_factor_driver = RC1, ef_time_factor_drone = RC2)
 
 # add component scores to d
 vars <- vars %>% bind_cols(pca_scores)
 
 
 # PCA for cog vars ---------------------------------------------------------
-pca <- vars %>% select(wm_accuracy_drone, gf_accuracy_drone, confidence_drone)
+pca <- vars %>% select(wm_accuracy, gf_accuracy, confidence,
+                       wm_accuracy_drone, gf_accuracy_drone, confidence_drone)
+
+# corstarsl(pca) %>% 
+#   write_csv("output/supp_efa_corrs2.csv")
 
 # Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
 KMO(cor(pca, use = "pairwise.complete.obs"))
@@ -708,7 +643,7 @@ print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 5
 scree(pca, factors = TRUE)
 
 # 1-component PCA
-n_comp <- 1
+n_comp <- 2
 
 fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
                  method = score_method, scores = TRUE)
@@ -721,7 +656,7 @@ pattern_matrix()
 
 # save component scores as dataframe
 pca_scores <- data.frame(fit$scores) %>% 
-  rename(competence_factor_drone = PC1)
+  rename(competence_factor_driver = RC1, competence_factor_drone = RC2)
 
 # add component scores to d
 vars <- vars %>% bind_cols(pca_scores)
@@ -729,4 +664,153 @@ vars <- vars %>% bind_cols(pca_scores)
 
 # last saved 13 May 2021
 vars %>% write_csv("data/210513_comms_efa_vars.csv")
+
+
+
+
+
+# 
+# # DRIVER ------------------------------------------------------------------
+# 
+# # PCA for EF vars ---------------------------------------------------------
+# pca <- vars %>% select(congruent_time, incongruent_time, switch_time, repeat_time)
+# 
+# # Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+# KMO(cor(pca, use = "pairwise.complete.obs"))
+# 
+# # Bartlett's test of spherecity
+# print("Bartletts test of spherecity")
+# print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
+# 
+# # scree plot
+# scree(pca, factors = TRUE)
+# 
+# # 1-component PCA
+# n_comp <- 1
+# 
+# fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+#                  method = score_method, scores = TRUE)
+# 
+# # variance explained
+# var_table()
+# 
+# # pattern matrix
+# pattern_matrix()
+# 
+# # save component scores as dataframe
+# pca_scores <- data.frame(fit$scores) %>% 
+#   rename(ef_time_factor_driver = PC1)
+# 
+# # add component scores to d
+# vars <- vars %>% bind_cols(pca_scores)
+# 
+# 
+# # PCA for cog vars ---------------------------------------------------------
+# pca <- vars %>% select(wm_accuracy, gf_accuracy, confidence)
+# 
+# # Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+# KMO(cor(pca, use = "pairwise.complete.obs"))
+# 
+# # Bartlett's test of spherecity
+# print("Bartletts test of spherecity")
+# print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
+# 
+# # scree plot
+# scree(pca, factors = TRUE)
+# 
+# # 1-component PCA
+# n_comp <- 1
+# 
+# fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+#                  method = score_method, scores = TRUE)
+# 
+# # variance explained
+# var_table()
+# 
+# # pattern matrix
+# pattern_matrix()
+# 
+# # save component scores as dataframe
+# pca_scores <- data.frame(fit$scores) %>% 
+#   rename(competence_factor_driver = PC1)
+# 
+# # add component scores to d
+# vars <- vars %>% bind_cols(pca_scores)
+# 
+# 
+# # DRONE ------------------------------------------------------------------
+# 
+# # PCA for EF vars ---------------------------------------------------------
+# pca <- vars %>% select(congruent_time_drone, incongruent_time_drone, switch_time_drone, repeat_time_drone)
+# 
+# # Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+# KMO(cor(pca, use = "pairwise.complete.obs"))
+# 
+# # Bartlett's test of spherecity
+# print("Bartletts test of spherecity")
+# print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 83)))
+# 
+# # scree plot
+# scree(pca, factors = TRUE)
+# 
+# # scree plot suggests 2 components but 1 component model consistent with driver pca
+# # Conduct parallel analysis to confirm # components
+# # fa.parallel(vars)
+# paran::paran(drop_na(pca), iterations = 5000, all = T, graph = T)
+# 
+# # PCA
+# n_comp <- 1
+# 
+# fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+#                  method = score_method, scores = TRUE)
+# 
+# # variance explained
+# var_table()
+# 
+# # pattern matrix
+# pattern_matrix()
+# 
+# # save component scores as dataframe
+# pca_scores <- data.frame(fit$scores) %>% 
+#   rename(ef_time_factor_drone = RC1, ef_errors_factor_drone = RC2)
+# 
+# # add component scores to d
+# vars <- vars %>% bind_cols(pca_scores)
+# 
+# 
+# # PCA for cog vars ---------------------------------------------------------
+# pca <- vars %>% select(wm_accuracy_drone, gf_accuracy_drone, confidence_drone)
+# 
+# # Kaiser-Meyer-Olkin Measure of Sampling Adequacy (KMO)
+# KMO(cor(pca, use = "pairwise.complete.obs"))
+# 
+# # Bartlett's test of spherecity
+# print("Bartletts test of spherecity")
+# print(data.frame(cortest.bartlett(cor(pca, use = "pairwise.complete.obs"), n = 54)))
+# 
+# # scree plot
+# scree(pca, factors = TRUE)
+# 
+# # 1-component PCA
+# n_comp <- 1
+# 
+# fit <- principal(pca, rotate = rotate_method, nfactors = n_comp,
+#                  method = score_method, scores = TRUE)
+# 
+# # variance explained
+# var_table()
+# 
+# # pattern matrix
+# pattern_matrix()
+# 
+# # save component scores as dataframe
+# pca_scores <- data.frame(fit$scores) %>% 
+#   rename(competence_factor_drone = PC1)
+# 
+# # add component scores to d
+# vars <- vars %>% bind_cols(pca_scores)
+# 
+# 
+# # last saved 13 May 2021
+# vars %>% write_csv("data/210513_comms_efa_vars.csv")
 

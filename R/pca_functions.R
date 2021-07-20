@@ -4,14 +4,14 @@
 var_table <- function() {
   if (n_comp == 1) {
     a <- data.frame(component = 1:length(fit$communality),
-                    eigen = fit$values,
+                    eigen = round(fit$values,2),
                     prop_var = c(fit$Vaccounted[2,c(1:n_comp)], rnorm(length(fit$communality)-n_comp, 0, 0)),
                     cum_var = c(fit$Vaccounted[2,c(1:n_comp)], rnorm(length(fit$communality)-n_comp, 0, 0)),
                     rotation_SS_load = c(fit$Vaccounted[1,c(1:n_comp)], rnorm(length(fit$communality)-n_comp, 0, 0))) %>% 
       round(2)
   } else {
     a <- data.frame(component = 1:length(fit$communality),
-                    eigen = fit$values,
+                    eigen = round(fit$values,2),
                     prop_var = c(fit$Vaccounted[2,c(1:n_comp)], rnorm(length(fit$communality)-n_comp, 0, 0)),
                     cum_var = c(fit$Vaccounted[3,c(1:n_comp)], rnorm(length(fit$communality)-n_comp, 0, 0)),
                     rotation_SS_load = c(fit$Vaccounted[1,c(1:n_comp)], rnorm(length(fit$communality)-n_comp, 0, 0))) %>% 
@@ -69,7 +69,7 @@ corstarsl <- function(x){
   p <- rcorr(x)$P 
   
   ## define notions for significance levels; spacing is important.
-  mystars <- ifelse(p < .001, "**", ifelse(p < .01, "** ", ifelse(p < .05, "* ", " ")))
+  mystars <- ifelse(p < .001, "***", ifelse(p < .01, "** ", ifelse(p < .05, "* ", " ")))
   
   ## trunctuate the matrix that holds the correlations to two decimal
   R <- format(round(cbind(rep(-1.11, ncol(x)), R), 2))[,-1] 
